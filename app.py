@@ -8,6 +8,10 @@ import pandas_ta as ta
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import time
+# Imports para a sessão de requisições robusta
+import requests
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
 
 # =============================================================================
 # Configuração da Página do Streamlit
@@ -35,48 +39,50 @@ def load_tickers_from_file(filename):
 TICKERS_B3 = load_tickers_from_file('ibov_tickers.txt')
 TICKERS_US = load_tickers_from_file('sp500_tickers.txt')
 
-# <<< INÍCIO DA SOLUÇÃO DEFINITIVA: LÓGICA DE RETENTATIVA SEPARADA DO CACHE >>>
-def _fetch_data_with_retry(ticker):
+# <<< INÍCIO DA SOLUÇÃO DEFINITIVA: SESSÃO COM RETENTATIVA AUTOMÁTICA >>>
+@st.cache_resource
+def get_requests_session():
     """
-    Função interna NÃO CACHEADA que busca os dados com retentativas.
+    Cria e cacheia uma sessão de requests com política de retentativa.
+    Isso é muito mais robusto contra erros de API como o 429.
     """
-    for attempt in range(3):  # Tenta até 3 vezes
-        try:
-            stock = yf.Ticker(ticker)
-            info = stock.info
-            # Às vezes, a API retorna um dict vazio para tickers válidos. Verificamos uma chave essencial.
-            if not info or info.get('regularMarketPrice') is None:
-                raise ValueError(f"Resposta da API incompleta para {ticker}")
-            
-            hist = stock.history(period="2y")
-            dividends = stock.dividends
-            if hist.empty:
-                return None, None, None
-            
-            print(f"Sucesso ao buscar dados para {ticker}")
-            return info, hist, dividends  # Retorna sucesso e sai da função
-
-        except Exception as e:
-            # Se for um erro de "Too Many Requests" ou um erro de JSON vazio (sintoma do 429)
-            if "429" in str(e) or "Expecting value" in str(e):
-                wait_time = 2 * (attempt + 1)  # Espera 2, 4, 6 segundos
-                print(f"API Rate limit para {ticker}. Tentativa {attempt + 1}. Esperando {wait_time}s...")
-                time.sleep(wait_time)
-                continue  # Vai para a próxima tentativa do loop
-            else:
-                st.error(f"Erro inesperado ao buscar {ticker}: {e}")
-                return None, None, None
-    
-    # Se todas as tentativas falharem
-    st.warning(f"Falha ao buscar dados para {ticker} após múltiplas tentativas.")
-    return None, None, None
+    session = requests.Session()
+    retry_strategy = Retry(
+        total=3,  # Número total de retentativas
+        status_forcelist=[429, 500, 502, 503, 504],  # Códigos de erro para retentativa
+        allowed_methods=["HEAD", "GET", "OPTIONS"],
+        backoff_factor=1  # Tempo de espera = {backoff factor} * (2 ** ({number of total retries} - 1))
+                          # Espera 1s, 2s, 4s...
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
 
 @st.cache_data(ttl=3600)
 def get_stock_data(ticker):
     """
-    Função PÚBLICA com cache que chama a função de busca interna.
+    Busca dados de um ticker usando a sessão de requisições robusta.
     """
-    return _fetch_data_with_retry(ticker)
+    session = get_requests_session()
+    try:
+        stock = yf.Ticker(ticker, session=session)
+        info = stock.info
+        if not info or info.get('regularMarketPrice') is None:
+            # Tenta uma última vez sem a sessão, como fallback
+            stock = yf.Ticker(ticker)
+            info = stock.info
+            if not info or info.get('regularMarketPrice') is None:
+                raise ValueError("Resposta da API vazia ou inválida.")
+
+        hist = stock.history(period="2y")
+        dividends = stock.dividends
+        if hist.empty:
+            return None, None, None
+        return info, hist, dividends
+    except Exception as e:
+        st.warning(f"Não foi possível obter dados para {ticker}. Erro: {e}")
+        return None, None, None
 # <<< FIM DA SOLUÇÃO DEFINITIVA >>>
 
 
@@ -89,12 +95,8 @@ def run_fundamental_analysis(tickers):
     progress_bar = st.progress(0, text="Buscando dados fundamentalistas...")
     
     for i, ticker in enumerate(tickers):
-        # A chamada principal permanece a mesma
         info, hist, dividends = get_stock_data(ticker)
         
-        # A pausa manual aqui não é mais necessária, a lógica de retentativa já cuida disso.
-        # time.sleep(0.1) 
-
         if info and hist is not None and not hist.empty and info.get('trailingPE'):
             today = pd.Timestamp.now()
             one_year_ago = today - pd.DateOffset(years=1)
