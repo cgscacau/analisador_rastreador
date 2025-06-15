@@ -8,10 +8,6 @@ import pandas_ta as ta
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import time
-# Imports para a sessão de requisições robusta
-import requests
-from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
 
 # =============================================================================
 # Configuração da Página do Streamlit
@@ -39,65 +35,43 @@ def load_tickers_from_file(filename):
 TICKERS_B3 = load_tickers_from_file('ibov_tickers.txt')
 TICKERS_US = load_tickers_from_file('sp500_tickers.txt')
 
-# <<< INÍCIO DA SOLUÇÃO DEFINITIVA: SESSÃO COM RETENTATIVA AUTOMÁTICA >>>
-@st.cache_resource
-def get_requests_session():
-    """
-    Cria e cacheia uma sessão de requests com política de retentativa.
-    Isso é muito mais robusto contra erros de API como o 429.
-    """
-    session = requests.Session()
-    retry_strategy = Retry(
-        total=3,  # Número total de retentativas
-        status_forcelist=[429, 500, 502, 503, 504],  # Códigos de erro para retentativa
-        allowed_methods=["HEAD", "GET", "OPTIONS"],
-        backoff_factor=1  # Tempo de espera = {backoff factor} * (2 ** ({number of total retries} - 1))
-                          # Espera 1s, 2s, 4s...
-    )
-    adapter = HTTPAdapter(max_retries=retry_strategy)
-    session.mount("https://", adapter)
-    session.mount("http://", adapter)
-    return session
-
 @st.cache_data(ttl=3600)
 def get_stock_data(ticker):
     """
-    Busca dados de um ticker usando a sessão de requisições robusta.
+    Busca dados de um ticker. Abordagem simplificada para máxima compatibilidade.
     """
-    session = get_requests_session()
     try:
-        stock = yf.Ticker(ticker, session=session)
+        stock = yf.Ticker(ticker)
         info = stock.info
         if not info or info.get('regularMarketPrice') is None:
-            # Tenta uma última vez sem a sessão, como fallback
-            stock = yf.Ticker(ticker)
-            info = stock.info
-            if not info or info.get('regularMarketPrice') is None:
-                raise ValueError("Resposta da API vazia ou inválida.")
-
+             raise ValueError(f"Resposta da API incompleta para {ticker}")
+        
         hist = stock.history(period="2y")
         dividends = stock.dividends
         if hist.empty:
             return None, None, None
+            
         return info, hist, dividends
     except Exception as e:
         st.warning(f"Não foi possível obter dados para {ticker}. Erro: {e}")
         return None, None, None
-# <<< FIM DA SOLUÇÃO DEFINITIVA >>>
-
 
 # =============================================================================
 # Funções de Análise Fundamentalista
 # =============================================================================
 def run_fundamental_analysis(tickers):
-    """Executa a análise fundamentalista."""
+    """Executa a análise fundamentalista com pausas longas entre chamadas."""
     data = []
     progress_bar = st.progress(0, text="Buscando dados fundamentalistas...")
     
     for i, ticker in enumerate(tickers):
-        info, hist, dividends = get_stock_data(ticker)
+        # A pausa manual é a chave aqui para evitar o bloqueio da API
+        time.sleep(1) 
         
+        info, hist, dividends = get_stock_data(ticker)
+
         if info and hist is not None and not hist.empty and info.get('trailingPE'):
+            
             today = pd.Timestamp.now()
             one_year_ago = today - pd.DateOffset(years=1)
             ttm_dividends = dividends[dividends.index.tz_localize(None) > one_year_ago].sum()
