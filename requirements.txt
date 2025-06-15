@@ -1,4 +1,8 @@
 # requirements.txt
+# Especifica a versão do Python
+python==3.11
+
+# Dependências do projeto
 streamlit
 pandas==2.1.4
 numpy==1.26.4
