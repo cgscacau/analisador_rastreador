@@ -1,0 +1,8 @@
+# requirements.txt
+streamlit
+pandas
+numpy<2.0
+yfinance
+plotly
+pandas_ta
+finnhub-python 
