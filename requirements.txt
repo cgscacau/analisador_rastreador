@@ -1,8 +1,7 @@
 # requirements.txt
 streamlit
-pandas
-numpy<2.0
-yfinance
-plotly
-pandas_ta
-finnhub-python 
+pandas==2.1.4
+numpy==1.26.4
+yfinance==0.2.37
+plotly==5.18.0
+pandas-ta==0.3.14b0
