@@ -1,7 +1,12 @@
 # requirements.txt
+
+# Especifica a versão do Python
+python==3.11
+
+# Dependências do projeto
 streamlit
 pandas==2.1.4
 numpy==1.26.4
 yfinance==0.2.37
 plotly==5.18.0
-pandas-ta==0.3.14b0
+pandas-ta==0.3.14b0.14b0
