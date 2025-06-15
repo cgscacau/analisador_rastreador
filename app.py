@@ -35,53 +35,67 @@ def load_tickers_from_file(filename):
 TICKERS_B3 = load_tickers_from_file('ibov_tickers.txt')
 TICKERS_US = load_tickers_from_file('sp500_tickers.txt')
 
-@st.cache_data(ttl=3600)
-def get_stock_data(ticker):
+# <<< INÍCIO DA SOLUÇÃO DEFINITIVA: LÓGICA DE RETENTATIVA SEPARADA DO CACHE >>>
+def _fetch_data_with_retry(ticker):
     """
-    Busca dados de um ticker com mecanismo de retentativa para erros de API.
+    Função interna NÃO CACHEADA que busca os dados com retentativas.
     """
-    # <<< INÍCIO DA SOLUÇÃO FINAL: LÓGICA DE RETENTATIVA >>>
-    for attempt in range(3): # Tenta até 3 vezes
+    for attempt in range(3):  # Tenta até 3 vezes
         try:
             stock = yf.Ticker(ticker)
             info = stock.info
+            # Às vezes, a API retorna um dict vazio para tickers válidos. Verificamos uma chave essencial.
+            if not info or info.get('regularMarketPrice') is None:
+                raise ValueError(f"Resposta da API incompleta para {ticker}")
+            
             hist = stock.history(period="2y")
             dividends = stock.dividends
-            if hist.empty or not info.get('symbol'):
+            if hist.empty:
                 return None, None, None
-            return info, hist, dividends # Retorna sucesso e sai da função
+            
+            print(f"Sucesso ao buscar dados para {ticker}")
+            return info, hist, dividends  # Retorna sucesso e sai da função
+
         except Exception as e:
-            if "429" in str(e):
-                print(f"Erro 429 para {ticker}, tentativa {attempt + 1}. Tentando novamente em 2 segundos...")
-                time.sleep(2) # Espera 2 segundos antes de tentar de novo
-                continue # Vai para a próxima tentativa do loop
+            # Se for um erro de "Too Many Requests" ou um erro de JSON vazio (sintoma do 429)
+            if "429" in str(e) or "Expecting value" in str(e):
+                wait_time = 2 * (attempt + 1)  # Espera 2, 4, 6 segundos
+                print(f"API Rate limit para {ticker}. Tentativa {attempt + 1}. Esperando {wait_time}s...")
+                time.sleep(wait_time)
+                continue  # Vai para a próxima tentativa do loop
             else:
-                # Para qualquer outro erro, exibe e falha
-                st.error(f"Erro ao buscar dados para {ticker}: {e}")
+                st.error(f"Erro inesperado ao buscar {ticker}: {e}")
                 return None, None, None
     
     # Se todas as tentativas falharem
-    print(f"Falha ao buscar dados para {ticker} após 3 tentativas.")
+    st.warning(f"Falha ao buscar dados para {ticker} após múltiplas tentativas.")
     return None, None, None
-    # <<< FIM DA SOLUÇÃO FINAL >>>
+
+@st.cache_data(ttl=3600)
+def get_stock_data(ticker):
+    """
+    Função PÚBLICA com cache que chama a função de busca interna.
+    """
+    return _fetch_data_with_retry(ticker)
+# <<< FIM DA SOLUÇÃO DEFINITIVA >>>
 
 
 # =============================================================================
 # Funções de Análise Fundamentalista
 # =============================================================================
 def run_fundamental_analysis(tickers):
-    """Executa a análise fundamentalista com cálculo manual de DY."""
+    """Executa a análise fundamentalista."""
     data = []
     progress_bar = st.progress(0, text="Buscando dados fundamentalistas...")
     
     for i, ticker in enumerate(tickers):
+        # A chamada principal permanece a mesma
         info, hist, dividends = get_stock_data(ticker)
         
-        # A pausa agora é mais curta, pois a lógica de retentativa lida com o 429
-        time.sleep(0.1) 
+        # A pausa manual aqui não é mais necessária, a lógica de retentativa já cuida disso.
+        # time.sleep(0.1) 
 
         if info and hist is not None and not hist.empty and info.get('trailingPE'):
-            
             today = pd.Timestamp.now()
             one_year_ago = today - pd.DateOffset(years=1)
             ttm_dividends = dividends[dividends.index.tz_localize(None) > one_year_ago].sum()
