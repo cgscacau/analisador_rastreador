@@ -37,36 +37,51 @@ TICKERS_US = load_tickers_from_file('sp500_tickers.txt')
 
 @st.cache_data(ttl=3600)
 def get_stock_data(ticker):
-    """Busca dados fundamentalistas, históricos e de dividendos de um ticker."""
-    try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        hist = stock.history(period="2y")
-        dividends = stock.dividends
-        if hist.empty or not info.get('symbol'):
-            return None, None, None
-        return info, hist, dividends
-    except Exception as e:
-        # <<< MELHORIA: NÃO MOSTRA O ERRO 429 NA INTERFACE DO USUÁRIO >>>
-        if "429" not in str(e):
-            st.error(f"Erro ao buscar dados para {ticker}: {e}")
-        return None, None, None
+    """
+    Busca dados de um ticker com mecanismo de retentativa para erros de API.
+    """
+    # <<< INÍCIO DA SOLUÇÃO FINAL: LÓGICA DE RETENTATIVA >>>
+    for attempt in range(3): # Tenta até 3 vezes
+        try:
+            stock = yf.Ticker(ticker)
+            info = stock.info
+            hist = stock.history(period="2y")
+            dividends = stock.dividends
+            if hist.empty or not info.get('symbol'):
+                return None, None, None
+            return info, hist, dividends # Retorna sucesso e sai da função
+        except Exception as e:
+            if "429" in str(e):
+                print(f"Erro 429 para {ticker}, tentativa {attempt + 1}. Tentando novamente em 2 segundos...")
+                time.sleep(2) # Espera 2 segundos antes de tentar de novo
+                continue # Vai para a próxima tentativa do loop
+            else:
+                # Para qualquer outro erro, exibe e falha
+                st.error(f"Erro ao buscar dados para {ticker}: {e}")
+                return None, None, None
+    
+    # Se todas as tentativas falharem
+    print(f"Falha ao buscar dados para {ticker} após 3 tentativas.")
+    return None, None, None
+    # <<< FIM DA SOLUÇÃO FINAL >>>
+
 
 # =============================================================================
 # Funções de Análise Fundamentalista
 # =============================================================================
 def run_fundamental_analysis(tickers):
-    """Executa a análise fundamentalista com cálculo manual de DY e pausas."""
+    """Executa a análise fundamentalista com cálculo manual de DY."""
     data = []
     progress_bar = st.progress(0, text="Buscando dados fundamentalistas...")
     
     for i, ticker in enumerate(tickers):
         info, hist, dividends = get_stock_data(ticker)
         
-        # <<< CORREÇÃO: AUMENTA A PAUSA PARA 0.5 SEGUNDOS >>>
-        time.sleep(0.5)
+        # A pausa agora é mais curta, pois a lógica de retentativa lida com o 429
+        time.sleep(0.1) 
 
         if info and hist is not None and not hist.empty and info.get('trailingPE'):
+            
             today = pd.Timestamp.now()
             one_year_ago = today - pd.DateOffset(years=1)
             ttm_dividends = dividends[dividends.index.tz_localize(None) > one_year_ago].sum()
@@ -169,7 +184,7 @@ if st.sidebar.button("Executar Análise", type="primary"):
                              .background_gradient(cmap='Greens', subset=['Piotroski (Simples)']), use_container_width=True)
             st.session_state['fundamental_results'] = df_fundamentals.index.tolist()
         else:
-            st.warning("Não foi possível buscar os dados. A API pode estar temporariamente sobrecarregada. Tente novamente em alguns instantes ou com menos tickers.")
+            st.warning("Não foi possível buscar os dados. A API pode estar temporariamente sobrecarregada ou os tickers selecionados podem não ter dados disponíveis. Tente novamente em alguns instantes.")
 
 if 'fundamental_results' in st.session_state and st.session_state['fundamental_results']:
     st.header("📈 Análise Técnica Individual")
