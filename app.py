@@ -1,199 +1,302 @@
-# =============================================================================
-# Importação das bibliotecas necessárias
-# =============================================================================
 import streamlit as st
-import pandas as pd
 import yfinance as yf
-import pandas_ta as ta
+import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
+from datetime import datetime, timedelta
+import pandas_ta as ta
 
-# =============================================================================
-# Configuração da Página do Streamlit
-# =============================================================================
-st.set_page_config(
-    page_title="Análise Quant de Ações",
-    page_icon="🚀",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="Analisador de Ações", layout="wide")
 
-# =============================================================================
-# Funções de Carregamento e Coleta de Dados (Back-End)
-# =============================================================================
-
-def load_tickers_from_file(filename):
-    """Carrega uma lista de tickers de um arquivo de texto."""
-    try:
-        with open(filename, 'r') as f:
-            tickers = [line.strip() for line in f if line.strip()]
-        return tickers
-    except FileNotFoundError:
-        st.error(f"Arquivo de tickers não encontrado: {filename}.")
-        return []
-
-TICKERS_B3 = load_tickers_from_file('ibov_tickers.txt')
-TICKERS_US = load_tickers_from_file('sp500_tickers.txt')
-
-@st.cache_data(ttl=3600)
-def get_stock_data(ticker):
-    """Busca dados fundamentalistas e históricos de um ticker."""
-    try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        hist = stock.history(period="2y")
-        dividends = stock.dividends
-        if hist.empty or not info.get('symbol'):
-            st.warning(f"Não foi possível obter dados para {ticker}.")
-            return None, None, None
-        return info, hist, dividends
-    except Exception as e:
-        st.error(f"Erro ao buscar dados para {ticker}: {e}")
-        return None, None, None
-
-# =============================================================================
-# Funções de Análise Fundamentalista
-# =============================================================================
-
-def run_fundamental_analysis(tickers):
-    """Executa a análise fundamentalista com cálculo manual de DY."""
-    data = []
-    progress_bar = st.progress(0, text="Buscando dados fundamentalistas...")
+def calcular_indicadores(df):
+    """Calcula indicadores técnicos usando pandas_ta"""
+    # RSI
+    df['RSI'] = df.ta.rsi(length=14)
     
-    for i, ticker in enumerate(tickers):
-        info, hist, dividends = get_stock_data(ticker)
-        
-        if info and hist is not None and not hist.empty and info.get('trailingPE'):
-            
-            today = pd.Timestamp.now()
-            one_year_ago = today - pd.DateOffset(years=1)
-
-            # **INÍCIO DA CORREÇÃO DO ERRO DE TIMEZONE**
-            # Remove o fuso horário do índice de dividendos ANTES de comparar
-            ttm_dividends = dividends[dividends.index.tz_localize(None) > one_year_ago].sum()
-            # **FIM DA CORREÇÃO**
-
-            last_price = hist['Close'].iloc[-1]
-            calculated_dy = (ttm_dividends / last_price) if last_price > 0 else 0
-
-            roe = info.get('returnOnEquity')
-            net_margin = info.get('profitMargins')
-
-            data.append({
-                'Ticker': ticker, 'P/L': info.get('trailingPE'), 'P/VP': info.get('priceToBook'),
-                'ROE (%)': f"{roe:.2%}" if roe else None,
-                'Div. Yield (%)': f"{calculated_dy:.2%}" if calculated_dy > 0 else "0.00%",
-                'Dívida/PL': info.get('debtToEquity'), 'Marg. Líquida (%)': f"{net_margin:.2%}" if net_margin else None,
-                'ROIC (proxy)': info.get('returnOnAssets') or (info.get('freeCashflow', 0) / info.get('totalAssets', 1)),
-                'Earnings Yield': 1 / info.get('trailingPE') if info.get('trailingPE') else 0
-            })
-        progress_bar.progress((i + 1) / len(tickers), text=f"Analisando {ticker}...")
-        
-    progress_bar.empty()
-
-    if not data: return pd.DataFrame()
-    df = pd.DataFrame(data).set_index('Ticker')
-    df.dropna(subset=['P/L', 'P/VP'], inplace=True)
+    # MACD
+    macd = df.ta.macd(fast=12, slow=26, signal=9)
+    df['MACD'] = macd['MACD_12_26_9']
+    df['MACD_signal'] = macd['MACDs_12_26_9']
+    df['MACD_hist'] = macd['MACDh_12_26_9']
     
-    df['Piotroski (Simples)'] = (pd.to_numeric(df['ROE (%)'].str.replace('%', ''), errors='coerce') > 0).astype(int) + \
-                               (df['P/L'] > 0).astype(int) + \
-                               (df['Dívida/PL'].fillna(0) < 200).astype(int) + \
-                               (pd.to_numeric(df['Marg. Líquida (%)'].str.replace('%', ''), errors='coerce') > 0).astype(int)
-
-    df['Magic_Rank'] = df['ROIC (proxy)'].rank(ascending=False) + df['Earnings Yield'].rank(ascending=False)
-    df['Rank_ROE'] = pd.to_numeric(df['ROE (%)'].str.replace('%', ''), errors='coerce').rank(ascending=False)
-    df['Ranking_Final'] = df['P/L'].rank() * 0.4 + df['P/VP'].rank() * 0.3 + df['Rank_ROE'] * 0.3
+    # Bandas de Bollinger
+    bbands = df.ta.bbands(length=20, std=2)
+    df['BB_upper'] = bbands['BBU_20_2.0']
+    df['BB_middle'] = bbands['BBM_20_2.0']
+    df['BB_lower'] = bbands['BBL_20_2.0']
+    
+    # Médias Móveis
+    df['SMA_20'] = df.ta.sma(length=20)
+    df['SMA_50'] = df.ta.sma(length=50)
+    df['EMA_12'] = df.ta.ema(length=12)
+    df['EMA_26'] = df.ta.ema(length=26)
+    
+    # ATR (Average True Range)
+    df['ATR'] = df.ta.atr(length=14)
+    
+    # Estocástico
+    stoch = df.ta.stoch(high='High', low='Low', close='Close', k=14, d=3)
+    df['STOCH_k'] = stoch['STOCHk_14_3_3']
+    df['STOCH_d'] = stoch['STOCHd_14_3_3']
+    
     return df
 
-# =============================================================================
-# Funções de Análise Técnica (sem alterações)
-# =============================================================================
-def run_technical_analysis(hist_data):
-    if hist_data is None or len(hist_data) < 200: return None, "Dados Insuficientes", None, None
-    hist_data.ta.sma(length=9, append=True, col_names=('SMA_9',)); hist_data.ta.sma(length=21, append=True, col_names=('SMA_21',)); hist_data.ta.sma(length=200, append=True, col_names=('SMA_200',))
-    hist_data.ta.rsi(length=14, append=True, col_names=('RSI_14',)); hist_data.ta.macd(fast=12, slow=26, signal=9, append=True); hist_data.ta.stoch(k=14, d=3, smooth_k=3, append=True); hist_data.ta.ichimoku(append=True)
-    last, prev = hist_data.iloc[-1], hist_data.iloc[-2]
-    tendencia = "Lateral"
-    if last['Close'] > last['ISA_9'] and last['Close'] > last['ISB_26']: tendencia = "Alta"
-    elif last['Close'] < last['ISA_9'] and last['Close'] < last['ISB_26']: tendencia = "Baixa"
+def gerar_sinais(df):
+    """Gera sinais de compra/venda baseados nos indicadores"""
     sinais = []
-    if last['SMA_9'] > last['SMA_21'] and prev['SMA_9'] <= prev['SMA_21']: sinais.append("🟢 **Compra**: Cruzamento de Média Móvel (9 > 21).")
-    if last['SMA_9'] < last['SMA_21'] and prev['SMA_9'] >= prev['SMA_21']: sinais.append("🔴 **Venda**: Cruzamento de Média Móvel (9 < 21).")
-    if last['RSI_14'] < 30: sinais.append(f"🟢 **Compra**: RSI em {last['RSI_14']:.2f} (sobrevendido).")
-    if last['RSI_14'] > 70: sinais.append(f"🔴 **Venda**: RSI em {last['RSI_14']:.2f} (sobrecomprado).")
-    if last['MACD_12_26_9'] > last['MACDs_12_26_9'] and prev['MACD_12_26_9'] <= prev['MACDs_12_26_9']: sinais.append("🟢 **Compra**: Cruzamento de MACD para cima.")
-    if last['MACD_12_26_9'] < last['MACDs_12_26_9'] and prev['MACD_12_26_9'] >= prev['MACDs_12_26_9']: sinais.append("🔴 **Venda**: Cruzamento de MACD para baixo.")
-    if last['STOCHk_14_3_3'] < 20 and last['STOCHd_14_3_3'] < 20: sinais.append(f"🟢 **Compra**: Estocástico em {last['STOCHk_14_3_3']:.2f} (sobrevendido).")
-    if last['STOCHk_14_3_3'] > 80 and last['STOCHd_14_3_3'] > 80: sinais.append(f"🔴 **Venda**: Estocástico em {last['STOCHk_14_3_3']:.2f} (sobrecomprado).")
-    if last['ITS_9'] > last['IKS_26'] and prev['ITS_9'] <= prev['IKS_26']: sinais.append("🟢 **Compra**: Cruzamento Ichimoku (Tenkan > Kijun).")
-    if last['ITS_9'] < last['IKS_26'] and prev['ITS_9'] >= prev['IKS_26']: sinais.append("🔴 **Venda**: Cruzamento Ichimoku (Tenkan < Kijun).")
-    sinais_compra, sinais_venda = len([s for s in sinais if "Compra" in s]), len([s for s in sinais if "Venda" in s])
-    status_tecnico = "Potencial de Compra" if sinais_compra > sinais_venda else "Potencial de Venda" if sinais_venda > sinais_compra else "Neutro"
-    return hist_data, tendencia, status_tecnico, "\n".join(sinais)
+    
+    ultima_linha = df.iloc[-1]
+    penultima_linha = df.iloc[-2] if len(df) > 1 else None
+    
+    # Sinal RSI
+    if ultima_linha['RSI'] < 30:
+        sinais.append(("🟢 COMPRA", "RSI está em zona de sobrevenda (< 30)"))
+    elif ultima_linha['RSI'] > 70:
+        sinais.append(("🔴 VENDA", "RSI está em zona de sobrecompra (> 70)"))
+    
+    # Sinal MACD
+    if penultima_linha is not None:
+        if (penultima_linha['MACD'] < penultima_linha['MACD_signal'] and 
+            ultima_linha['MACD'] > ultima_linha['MACD_signal']):
+            sinais.append(("🟢 COMPRA", "MACD cruzou acima da linha de sinal"))
+        elif (penultima_linha['MACD'] > penultima_linha['MACD_signal'] and 
+              ultima_linha['MACD'] < ultima_linha['MACD_signal']):
+            sinais.append(("🔴 VENDA", "MACD cruzou abaixo da linha de sinal"))
+    
+    # Sinal Bandas de Bollinger
+    if ultima_linha['Close'] < ultima_linha['BB_lower']:
+        sinais.append(("🟢 COMPRA", "Preço abaixo da banda inferior de Bollinger"))
+    elif ultima_linha['Close'] > ultima_linha['BB_upper']:
+        sinais.append(("🔴 VENDA", "Preço acima da banda superior de Bollinger"))
+    
+    # Sinal Médias Móveis
+    if penultima_linha is not None:
+        if (penultima_linha['SMA_20'] < penultima_linha['SMA_50'] and 
+            ultima_linha['SMA_20'] > ultima_linha['SMA_50']):
+            sinais.append(("🟢 COMPRA", "Cruzamento dourado: SMA20 cruzou acima da SMA50"))
+        elif (penultima_linha['SMA_20'] > penultima_linha['SMA_50'] and 
+              ultima_linha['SMA_20'] < ultima_linha['SMA_50']):
+            sinais.append(("🔴 VENDA", "Cruzamento da morte: SMA20 cruzou abaixo da SMA50"))
+    
+    # Sinal Estocástico
+    if ultima_linha['STOCH_k'] < 20:
+        sinais.append(("🟢 COMPRA", "Estocástico em zona de sobrevenda (< 20)"))
+    elif ultima_linha['STOCH_k'] > 80:
+        sinais.append(("🔴 VENDA", "Estocástico em zona de sobrecompra (> 80)"))
+    
+    return sinais
 
-def plot_technical_analysis(df, ticker):
-    fig = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.03, subplot_titles=(f'Preço & Ichimoku - {ticker}', 'RSI', 'MACD', 'Estocástico'), row_heights=[0.6, 0.1, 0.15, 0.15])
-    fig.add_trace(go.Candlestick(x=df.index, open=df['Open'], high=df['High'], low=df['Low'], close=df['Close'], name='Candles'), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['ISA_9'], line=dict(color='rgba(0,0,0,0)'), showlegend=False), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['ISB_26'], line=dict(color='rgba(0,0,0,0)'), name='Nuvem Ichimoku', fill='tonexty', fillcolor='rgba(0, 255, 0, 0.2)' if df['ISA_9'].iloc[-1] > df['ISB_26'].iloc[-1] else 'rgba(255, 0, 0, 0.2)'), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['ITS_9'], name='Tenkan-sen', line=dict(color='blue', width=1.2)), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['IKS_26'], name='Kijun-sen', line=dict(color='red', width=1.2)), row=1, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['RSI_14'], name='RSI'), row=2, col=1)
-    fig.add_hline(y=70, row=2, col=1, line_dash="dash", line_color='red'); fig.add_hline(y=30, row=2, col=1, line_dash="dash", line_color='green')
-    fig.add_trace(go.Scatter(x=df.index, y=df['MACD_12_26_9'], name='MACD'), row=3, col=1); fig.add_trace(go.Scatter(x=df.index, y=df['MACDs_12_26_9'], name='Signal'), row=3, col=1); fig.add_trace(go.Bar(x=df.index, y=df['MACDh_12_26_9'], name='Histogram'), row=3, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=df['STOCHk_14_3_3'], name='%K'), row=4, col=1); fig.add_trace(go.Scatter(x=df.index, y=df['STOCHd_14_3_3'], name='%D'), row=4, col=1); fig.add_hline(y=80, row=4, col=1, line_dash="dash", line_color='red'); fig.add_hline(y=20, row=4, col=1, line_dash="dash", line_color='green')
-    fig.update_layout(height=800, showlegend=True, legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), xaxis_rangeslider_visible=False)
-    st.plotly_chart(fig, use_container_width=True)
+def criar_grafico_candlestick(df, ticker):
+    """Cria gráfico de candlestick com indicadores"""
+    fig = go.Figure()
+    
+    # Candlestick
+    fig.add_trace(go.Candlestick(
+        x=df.index,
+        open=df['Open'],
+        high=df['High'],
+        low=df['Low'],
+        close=df['Close'],
+        name='Preço'
+    ))
+    
+    # Bandas de Bollinger
+    fig.add_trace(go.Scatter(
+        x=df.index, y=df['BB_upper'],
+        name='BB Superior',
+        line=dict(color='gray', dash='dash'),
+        opacity=0.5
+    ))
+    fig.add_trace(go.Scatter(
+        x=df.index, y=df['BB_middle'],
+        name='BB Média',
+        line=dict(color='blue', dash='dash'),
+        opacity=0.5
+    ))
+    fig.add_trace(go.Scatter(
+        x=df.index, y=df['BB_lower'],
+        name='BB Inferior',
+        line=dict(color='gray', dash='dash'),
+        opacity=0.5,
+        fill='tonexty'
+    ))
+    
+    # Médias Móveis
+    fig.add_trace(go.Scatter(
+        x=df.index, y=df['SMA_20'],
+        name='SMA 20',
+        line=dict(color='orange', width=1)
+    ))
+    fig.add_trace(go.Scatter(
+        x=df.index, y=df['SMA_50'],
+        name='SMA 50',
+        line=dict(color='red', width=1)
+    ))
+    
+    fig.update_layout(
+        title=f'{ticker} - Análise Técnica',
+        yaxis_title='Preço (R$)',
+        xaxis_title='Data',
+        template='plotly_dark',
+        height=600,
+        xaxis_rangeslider_visible=False
+    )
+    
+    return fig
 
-# =============================================================================
-# Interface do Streamlit (UI) - Estrutura Original Mantida
-# =============================================================================
-st.title("🚀 Análise Quantitativa de Ações")
-st.markdown("Uma ferramenta para análise fundamentalista e técnica.")
-st.sidebar.header("Configurações de Análise")
-market = st.sidebar.radio("Escolha o Mercado:", ('Bolsa Brasileira (B3)', 'Bolsa Americana (S&P 500)'))
-tickers_list = TICKERS_B3 if market == 'Bolsa Brasileira (B3)' else TICKERS_US
-default_tickers = tickers_list[:10] if tickers_list else []
-selected_tickers = st.sidebar.multiselect("Selecione os Tickers:", tickers_list, default=default_tickers)
+def criar_grafico_rsi(df):
+    """Cria gráfico do RSI"""
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=df.index,
+        y=df['RSI'],
+        name='RSI',
+        line=dict(color='purple', width=2)
+    ))
+    
+    # Linhas de referência
+    fig.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Sobrecompra")
+    fig.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Sobrevenda")
+    fig.add_hline(y=50, line_dash="dot", line_color="gray")
+    
+    fig.update_layout(
+        title='RSI (Relative Strength Index)',
+        yaxis_title='RSI',
+        xaxis_title='Data',
+        template='plotly_dark',
+        height=300
+    )
+    
+    return fig
 
-if st.sidebar.button("Executar Análise", type="primary"):
-    if not selected_tickers: st.warning("Por favor, selecione pelo menos um ticker.")
-    else:
-        st.header("📊 Análise Fundamentalista Comparativa")
-        df_fundamentals = run_fundamental_analysis(selected_tickers)
-        if not df_fundamentals.empty:
-            tab1, tab2, tab3 = st.tabs(["Ranking Customizado", "Magic Formula", "Piotroski Score"])
-            with tab1: st.dataframe(df_fundamentals.sort_values('Ranking_Final')[['P/L', 'P/VP', 'ROE (%)', 'Ranking_Final']], use_container_width=True)
-            with tab2: st.dataframe(df_fundamentals.sort_values('Magic_Rank')[['ROIC (proxy)', 'Earnings Yield', 'Magic_Rank']], use_container_width=True)
-            with tab3: st.dataframe(df_fundamentals.sort_values('Piotroski (Simples)', ascending=False)[['Piotroski (Simples)']], use_container_width=True)
-            st.session_state['fundamental_results'] = df_fundamentals.index.tolist()
+def criar_grafico_macd(df):
+    """Cria gráfico do MACD"""
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=df.index,
+        y=df['MACD'],
+        name='MACD',
+        line=dict(color='blue', width=2)
+    ))
+    
+    fig.add_trace(go.Scatter(
+        x=df.index,
+        y=df['MACD_signal'],
+        name='Sinal',
+        line=dict(color='red', width=2)
+    ))
+    
+    # Histograma
+    colors = ['green' if val >= 0 else 'red' for val in df['MACD_hist']]
+    fig.add_trace(go.Bar(
+        x=df.index,
+        y=df['MACD_hist'],
+        name='Histograma',
+        marker_color=colors,
+        opacity=0.5
+    ))
+    
+    fig.update_layout(
+        title='MACD (Moving Average Convergence Divergence)',
+        yaxis_title='MACD',
+        xaxis_title='Data',
+        template='plotly_dark',
+        height=300
+    )
+    
+    return fig
 
-if 'fundamental_results' in st.session_state and st.session_state['fundamental_results']:
-    st.header("📈 Análise Técnica Individual")
-    selected_ticker_for_tech = st.selectbox("Selecione um ticker:", st.session_state['fundamental_results'])
-    if selected_ticker_for_tech:
-        with st.spinner(f"Gerando análise técnica para {selected_ticker_for_tech}..."):
-            info, hist_data, dividends = get_stock_data(selected_ticker_for_tech)
-            if hist_data is not None and info:
-                df_tech, tendencia, status_tecnico, sinais = run_technical_analysis(hist_data)
-                if df_tech is not None:
-                    col1, col2, col3 = st.columns(3)
-                    col1.metric("Tendência (Ichimoku)", tendencia)
-                    col2.metric("Status dos Sinais", status_tecnico)
-                    with col3.expander("Ver Sinais Detalhados"): st.markdown(sinais if sinais else "Nenhum sinal técnico claro no momento.")
-                    st.subheader("Resumo da Análise")
+# Interface Streamlit
+st.title("📈 Analisador Técnico de Ações")
+st.markdown("---")
 
-                    today_sum = pd.Timestamp.now()
-                    one_year_ago_sum = today_sum - pd.DateOffset(years=1)
-                    
-                    # **INÍCIO DA CORREÇÃO DO ERRO DE TIMEZONE (NO RESUMO)**
-                    ttm_dividends_sum = dividends[dividends.index.tz_localize(None) > one_year_ago_sum].sum()
-                    # **FIM DA CORREÇÃO**
+# Sidebar
+with st.sidebar:
+    st.header("⚙️ Configurações")
+    
+    ticker = st.text_input("Ticker da Ação", value="PETR4.SA", help="Ex: PETR4.SA, VALE3.SA, ITUB4.SA")
+    
+    periodo = st.selectbox(
+        "Período de Análise",
+        options=["1mo", "3mo", "6mo", "1y", "2y", "5y"],
+        index=2
+    )
+    
+    intervalo = st.selectbox(
+        "Intervalo",
+        options=["1d", "1wk", "1mo"],
+        index=0
+    )
+    
+    analisar = st.button("🔍 Analisar", type="primary", use_container_width=True)
 
-                    last_price_sum = hist_data['Close'].iloc[-1]
-                    correct_dy = (ttm_dividends_sum / last_price_sum) if last_price_sum > 0 else 0
-                    
-                    fundamental_summary = f"Do ponto de vista **fundamentalista**, {info.get('longName', selected_ticker_for_tech)} apresenta P/L de `{info.get('trailingPE'):.2f}`, P/VP de `{info.get('priceToBook'):.2f}` e Dividend Yield de `{correct_dy:.2%}`."
-                    technical_summary = f"Do ponto de vista **técnico**, a tendência principal é de **{tendencia}** e o balanço dos sinais aponta para **{status_tecnico}**."
-                    st.markdown(fundamental_summary); st.markdown(technical_summary)
-                    plot_technical_analysis(df_tech, selected_ticker_for_tech)
+# Conteúdo principal
+if analisar:
+    try:
+        with st.spinner(f"Carregando dados de {ticker}..."):
+            # Baixar dados
+            stock = yf.Ticker(ticker)
+            df = stock.history(period=periodo, interval=intervalo)
+            
+            if df.empty:
+                st.error("❌ Não foi possível carregar os dados. Verifique o ticker.")
+            else:
+                # Calcular indicadores
+                df = calcular_indicadores(df)
+                
+                # Informações básicas
+                info = stock.info
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric("Preço Atual", f"R$ {df['Close'].iloc[-1]:.2f}")
+                with col2:
+                    variacao = ((df['Close'].iloc[-1] - df['Close'].iloc[-2]) / df['Close'].iloc[-2] * 100)
+                    st.metric("Variação Diária", f"{variacao:.2f}%")
+                with col3:
+                    st.metric("Volume", f"{df['Volume'].iloc[-1]:,.0f}")
+                with col4:
+                    st.metric("RSI", f"{df['RSI'].iloc[-1]:.2f}")
+                
+                st.markdown("---")
+                
+                # Sinais de Trading
+                st.subheader("🎯 Sinais de Trading")
+                sinais = gerar_sinais(df)
+                
+                if sinais:
+                    for sinal, descricao in sinais:
+                        if "COMPRA" in sinal:
+                            st.success(f"{sinal}: {descricao}")
+                        else:
+                            st.error(f"{sinal}: {descricao}")
+                else:
+                    st.info("ℹ️ Nenhum sinal forte identificado no momento.")
+                
+                st.markdown("---")
+                
+                # Gráficos
+                st.subheader("📊 Gráficos")
+                
+                # Gráfico principal
+                st.plotly_chart(criar_grafico_candlestick(df, ticker), use_container_width=True)
+                
+                # Gráficos de indicadores
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.plotly_chart(criar_grafico_rsi(df), use_container_width=True)
+                
+                with col2:
+                    st.plotly_chart(criar_grafico_macd(df), use_container_width=True)
+                
+                # Tabela de dados
+                with st.expander("📋 Ver Dados Detalhados"):
+                    st.dataframe(df.tail(20).iloc[::-1], use_container_width=True)
+                
+    except Exception as e:
+        st.error(f"❌ Erro ao processar: {str(e)}")
+        st.info("💡 Dica: Verifique se o ticker está correto e tente novamente.")
+else:
+    st.info("👈 Configure os parâmetros na barra lateral e clique em 'Analisar'")
