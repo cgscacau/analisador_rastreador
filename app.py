@@ -3,40 +3,52 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
-import pandas_ta as ta
+import ta  # Biblioteca alternativa
 
 st.set_page_config(page_title="Analisador de Ações", layout="wide")
 
 def calcular_indicadores(df):
-    """Calcula indicadores técnicos usando pandas_ta"""
+    """Calcula indicadores técnicos usando a biblioteca ta"""
+    
     # RSI
-    df['RSI'] = df.ta.rsi(length=14)
+    df['RSI'] = ta.momentum.RSIIndicator(close=df['Close'], window=14).rsi()
     
     # MACD
-    macd = df.ta.macd(fast=12, slow=26, signal=9)
-    df['MACD'] = macd['MACD_12_26_9']
-    df['MACD_signal'] = macd['MACDs_12_26_9']
-    df['MACD_hist'] = macd['MACDh_12_26_9']
+    macd = ta.trend.MACD(close=df['Close'], window_slow=26, window_fast=12, window_sign=9)
+    df['MACD'] = macd.macd()
+    df['MACD_signal'] = macd.macd_signal()
+    df['MACD_hist'] = macd.macd_diff()
     
     # Bandas de Bollinger
-    bbands = df.ta.bbands(length=20, std=2)
-    df['BB_upper'] = bbands['BBU_20_2.0']
-    df['BB_middle'] = bbands['BBM_20_2.0']
-    df['BB_lower'] = bbands['BBL_20_2.0']
+    bollinger = ta.volatility.BollingerBands(close=df['Close'], window=20, window_dev=2)
+    df['BB_upper'] = bollinger.bollinger_hband()
+    df['BB_middle'] = bollinger.bollinger_mavg()
+    df['BB_lower'] = bollinger.bollinger_lband()
     
     # Médias Móveis
-    df['SMA_20'] = df.ta.sma(length=20)
-    df['SMA_50'] = df.ta.sma(length=50)
-    df['EMA_12'] = df.ta.ema(length=12)
-    df['EMA_26'] = df.ta.ema(length=26)
+    df['SMA_20'] = ta.trend.SMAIndicator(close=df['Close'], window=20).sma_indicator()
+    df['SMA_50'] = ta.trend.SMAIndicator(close=df['Close'], window=50).sma_indicator()
+    df['EMA_12'] = ta.trend.EMAIndicator(close=df['Close'], window=12).ema_indicator()
+    df['EMA_26'] = ta.trend.EMAIndicator(close=df['Close'], window=26).ema_indicator()
     
     # ATR (Average True Range)
-    df['ATR'] = df.ta.atr(length=14)
+    df['ATR'] = ta.volatility.AverageTrueRange(
+        high=df['High'], 
+        low=df['Low'], 
+        close=df['Close'], 
+        window=14
+    ).average_true_range()
     
     # Estocástico
-    stoch = df.ta.stoch(high='High', low='Low', close='Close', k=14, d=3)
-    df['STOCH_k'] = stoch['STOCHk_14_3_3']
-    df['STOCH_d'] = stoch['STOCHd_14_3_3']
+    stoch = ta.momentum.StochasticOscillator(
+        high=df['High'],
+        low=df['Low'],
+        close=df['Close'],
+        window=14,
+        smooth_window=3
+    )
+    df['STOCH_k'] = stoch.stoch()
+    df['STOCH_d'] = stoch.stoch_signal()
     
     return df
 
@@ -48,13 +60,14 @@ def gerar_sinais(df):
     penultima_linha = df.iloc[-2] if len(df) > 1 else None
     
     # Sinal RSI
-    if ultima_linha['RSI'] < 30:
-        sinais.append(("🟢 COMPRA", "RSI está em zona de sobrevenda (< 30)"))
-    elif ultima_linha['RSI'] > 70:
-        sinais.append(("🔴 VENDA", "RSI está em zona de sobrecompra (> 70)"))
+    if not pd.isna(ultima_linha['RSI']):
+        if ultima_linha['RSI'] < 30:
+            sinais.append(("🟢 COMPRA", "RSI está em zona de sobrevenda (< 30)"))
+        elif ultima_linha['RSI'] > 70:
+            sinais.append(("🔴 VENDA", "RSI está em zona de sobrecompra (> 70)"))
     
     # Sinal MACD
-    if penultima_linha is not None:
+    if penultima_linha is not None and not pd.isna(ultima_linha['MACD']):
         if (penultima_linha['MACD'] < penultima_linha['MACD_signal'] and 
             ultima_linha['MACD'] > ultima_linha['MACD_signal']):
             sinais.append(("🟢 COMPRA", "MACD cruzou acima da linha de sinal"))
@@ -63,13 +76,14 @@ def gerar_sinais(df):
             sinais.append(("🔴 VENDA", "MACD cruzou abaixo da linha de sinal"))
     
     # Sinal Bandas de Bollinger
-    if ultima_linha['Close'] < ultima_linha['BB_lower']:
-        sinais.append(("🟢 COMPRA", "Preço abaixo da banda inferior de Bollinger"))
-    elif ultima_linha['Close'] > ultima_linha['BB_upper']:
-        sinais.append(("🔴 VENDA", "Preço acima da banda superior de Bollinger"))
+    if not pd.isna(ultima_linha['BB_lower']):
+        if ultima_linha['Close'] < ultima_linha['BB_lower']:
+            sinais.append(("🟢 COMPRA", "Preço abaixo da banda inferior de Bollinger"))
+        elif ultima_linha['Close'] > ultima_linha['BB_upper']:
+            sinais.append(("🔴 VENDA", "Preço acima da banda superior de Bollinger"))
     
     # Sinal Médias Móveis
-    if penultima_linha is not None:
+    if penultima_linha is not None and not pd.isna(ultima_linha['SMA_20']):
         if (penultima_linha['SMA_20'] < penultima_linha['SMA_50'] and 
             ultima_linha['SMA_20'] > ultima_linha['SMA_50']):
             sinais.append(("🟢 COMPRA", "Cruzamento dourado: SMA20 cruzou acima da SMA50"))
@@ -78,10 +92,11 @@ def gerar_sinais(df):
             sinais.append(("🔴 VENDA", "Cruzamento da morte: SMA20 cruzou abaixo da SMA50"))
     
     # Sinal Estocástico
-    if ultima_linha['STOCH_k'] < 20:
-        sinais.append(("🟢 COMPRA", "Estocástico em zona de sobrevenda (< 20)"))
-    elif ultima_linha['STOCH_k'] > 80:
-        sinais.append(("🔴 VENDA", "Estocástico em zona de sobrecompra (> 80)"))
+    if not pd.isna(ultima_linha['STOCH_k']):
+        if ultima_linha['STOCH_k'] < 20:
+            sinais.append(("🟢 COMPRA", "Estocástico em zona de sobrevenda (< 20)"))
+        elif ultima_linha['STOCH_k'] > 80:
+            sinais.append(("🔴 VENDA", "Estocástico em zona de sobrecompra (> 80)"))
     
     return sinais
 
@@ -246,7 +261,6 @@ if analisar:
                 df = calcular_indicadores(df)
                 
                 # Informações básicas
-                info = stock.info
                 col1, col2, col3, col4 = st.columns(4)
                 
                 with col1:
@@ -257,7 +271,11 @@ if analisar:
                 with col3:
                     st.metric("Volume", f"{df['Volume'].iloc[-1]:,.0f}")
                 with col4:
-                    st.metric("RSI", f"{df['RSI'].iloc[-1]:.2f}")
+                    rsi_value = df['RSI'].iloc[-1]
+                    if not pd.isna(rsi_value):
+                        st.metric("RSI", f"{rsi_value:.2f}")
+                    else:
+                        st.metric("RSI", "N/A")
                 
                 st.markdown("---")
                 
