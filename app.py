@@ -293,6 +293,12 @@ if analisar:
                     st.info("ℹ️ Nenhum sinal forte identificado no momento.")
                 
                 st.markdown("---")
+
+                # RESUMO ANALÍTICO - NOVA SEÇÃO
+                exibir_resumo_analitico(df)
+                
+                st.markdown("---")
+                
                 
                 # Gráficos
                 st.subheader("📊 Gráficos")
