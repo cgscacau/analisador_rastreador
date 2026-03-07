@@ -14,15 +14,20 @@ def calcular_indicadores(df):
     df['MACD_hist'] = macd.macd_diff()
     
     # Canal de Regressão Linear (Substituindo Bollinger)
+    # Canal de Regressão Linear
     window_lr = 20
-    weights_lr = np.zeros(window_lr)
-    x_m = (window_lr - 1) / 2.0
-    x_v = (window_lr**3 - window_lr) / 12.0
-    for i in range(window_lr):
-        weights_lr[i] = 1.0/window_lr + ((i - x_m) / x_v) * x_m
-        
-    df['LR_middle'] = df['Close'].rolling(window=window_lr).apply(lambda y: np.dot(y, weights_lr), raw=True)
+    
+    def calculate_lr(series):
+        if len(series) < window_lr: return np.nan
+        x = np.arange(window_lr)
+        y = series.values
+        slope, intercept = np.polyfit(x, y, 1)
+        # Retorna o ponto projetado no final da janela
+        return intercept + slope * (window_lr - 1)
+
+    df['LR_middle'] = df['Close'].rolling(window=window_lr).apply(calculate_lr, raw=False)
     std_lr = df['Close'].rolling(window=window_lr).std()
+    
     df['LR_upper'] = df['LR_middle'] + (2 * std_lr)
     df['LR_lower'] = df['LR_middle'] - (2 * std_lr)
     
@@ -361,13 +366,15 @@ def simular_retorno_media(df, periodo_mm=20, desvios_entrada=2.0, take_profit_pc
     df_bt = df[['Open', 'High', 'Low', 'Close']].copy()
     
     window = int(periodo_mm)
-    weights = np.zeros(window)
-    x_avg = (window - 1) / 2.0
-    x_var = (window**3 - window) / 12.0
-    for i in range(window):
-        weights[i] = 1.0/window + ((i - x_avg) / x_var) * x_avg
+    
+    def calculate_bt_lr(series):
+        if len(series) < window: return np.nan
+        x = np.arange(window)
+        y = series.values
+        slope, intercept = np.polyfit(x, y, 1)
+        return intercept + slope * (window - 1)
         
-    df_bt['LRL'] = df_bt['Close'].rolling(window=window).apply(lambda y: np.dot(y, weights), raw=True)
+    df_bt['LRL'] = df_bt['Close'].rolling(window=window).apply(calculate_bt_lr, raw=False)
     std = df_bt['Close'].rolling(window=window).std()
     df_bt['Banda_Inferior'] = df_bt['LRL'] - (desvios_entrada * std)
     
