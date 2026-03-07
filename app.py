@@ -25,15 +25,12 @@ def obter_dados_yahoo(ticker, periodo, intervalo):
     df = stock.history(period=periodo, interval=intervalo)
     return df
 
-@st.cache_data
 def processar_indicadores(df):
     return calcular_indicadores(df.copy())
 
-@st.cache_data
 def executar_backtest(df, p_mm, p_dev, p_tp, p_sl):
     return simular_retorno_media(df.copy(), p_mm, p_dev, p_tp, p_sl)
 
-@st.cache_data
 def executar_otimizacao(df):
     return otimizar_retorno_media(df.copy())
 
@@ -272,7 +269,7 @@ if st.session_state.get('analisar_clicado', False):
                     rm_c1, rm_c2, rm_c3, rm_c4 = st.columns(4)
                     rm_c1.metric("Retorno Estratégia", f"{stats['retorno_pct']:.2f}%")
                     rm_c2.metric("Trades Realizados", stats['trades_realizados'])
-                    rm_c3.metric("Win Rate", f"{stats['win_rate']:.1f}%")
+                    rm_c3.metric("Probabilidade de Acerto (Win Rate)", f"{stats['win_rate']:.1f}%")
                     
                     retorno_bh = ((df_bt['Buy_and_Hold'].iloc[-1] - 1000) / 1000) * 100
                     rm_c4.metric("Comparação (Buy&Hold)", f"{retorno_bh:.2f}%")
