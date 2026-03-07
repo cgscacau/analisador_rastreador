@@ -337,3 +337,7 @@ def gerar_sinais(df):
     
     return sinais
 
+
+import numpy as np
+from itertools import product
+
