@@ -305,7 +305,7 @@ if st.session_state.get('analisar_clicado', False):
                     - 📊 **Probabilidade Histórica:** **{stats['win_rate']:.1f}%** de chance da ação bater no alvo antes do stop (Baseado nos {stats['trades_realizados']} trades simulados)
                     """)
                     
-                    st.plotly_chart(criar_grafico_operacao_atual(df_bt, ticker, period_days=int(b_mm)+40, window_lr=int(b_mm), desvios_lr=float(b_dev)), use_container_width=True)
+                    st.plotly_chart(criar_grafico_operacao_atual(df_bt, ticker, period_bars=int(b_mm)+40, window_lr=int(b_mm), desvios_lr=float(b_dev)), use_container_width=True)
                 
     except Exception as e:
         st.error(f"❌ Erro ao processar: {str(e)}")
