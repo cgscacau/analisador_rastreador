@@ -152,3 +152,49 @@ def criar_grafico_backtest(df_bt, ticker):
     )
     
     return fig
+
+
+def criar_grafico_operacao_atual(df_bt, ticker, period_days=90):
+    """Cria um gráfico focado no momento atual com o canal de Regressão Linear"""
+    # Recorta os últimos dias do dataframe processado de backtest
+    df_zoom = df_bt.tail(period_days)
+    
+    fig = go.Figure()
+
+    # Preço
+    fig.add_trace(go.Candlestick(
+        x=df_zoom.index,
+        open=df_zoom['Open'],
+        high=df_zoom['High'],
+        low=df_zoom['Low'],
+        close=df_zoom['Close'],
+        name='Preço'
+    ))
+
+    # Linhas da Regressão Linear do Backtest (Média e Inferior)
+    if 'LRL' in df_zoom.columns:
+        fig.add_trace(go.Scatter(
+            x=df_zoom.index, y=df_zoom['LRL'],
+            name='LR Média (Alvo Central)',
+            line=dict(color='blue', dash='dash'),
+            opacity=0.7
+        ))
+    if 'Banda_Inferior' in df_zoom.columns:
+        fig.add_trace(go.Scatter(
+            x=df_zoom.index, y=df_zoom['Banda_Inferior'],
+            name='LR Inferior (Linha de Compra)',
+            line=dict(color='gray', dash='dash'),
+            opacity=0.7,
+            fill='tonexty' # Preenche da banda inferior até a media
+        ))
+
+    fig.update_layout(
+        title=f'{ticker} - Momento Atual (Zoom da Regressão Linear)',
+        template='plotly_dark',
+        height=400,
+        margin=dict(l=20, r=20, t=40, b=20),
+        xaxis_rangeslider_visible=False
+    )
+    
+    return fig
+

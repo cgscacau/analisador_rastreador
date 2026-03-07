@@ -12,7 +12,7 @@ from indicadores_tecnicos import (
     simular_retorno_media,
     otimizar_retorno_media
 )
-from visualizacao import criar_grafico_unificado, criar_grafico_backtest
+from visualizacao import criar_grafico_unificado, criar_grafico_backtest, criar_grafico_operacao_atual
 
 st.set_page_config(page_title="Analisador de Ações", layout="wide")
 
@@ -273,6 +273,42 @@ if st.session_state.get('analisar_clicado', False):
                     
                     retorno_bh = ((df_bt['Buy_and_Hold'].iloc[-1] - 1000) / 1000) * 100
                     rm_c4.metric("Comparação (Buy&Hold)", f"{retorno_bh:.2f}%")
+                    
+                    # ==== OPORTUNIDADE ATUAL ====
+                    st.markdown("---")
+                    st.subheader("🔎 Avaliação do Trade Mapeado Hoje")
+                    
+                    ultimo_fechamento = df_bt['Close'].iloc[-1]
+                    entrada_lr = df_bt['Banda_Inferior'].iloc[-1]
+                    alvo_media = df_bt['LRL'].iloc[-1]
+                    stop_estimado = entrada_lr * (1 - b_sl)
+                    alvo_estimado = entrada_lr * (1 + b_tp)
+                    
+                    distancia_entrada = ((ultimo_fechamento - entrada_lr) / entrada_lr) * 100
+                    
+                    op_c1, op_c2 = st.columns([1, 2])
+                    
+                    with op_c1:
+                        if ultimo_fechamento <= entrada_lr * 1.01: # margem de 1%
+                            st.success("🟢 **SINAL DE ENTRADA ATIVO!**")
+                            st.markdown(f"O preço de `{ultimo_fechamento:.2f}` está testando a Banda Inferior Otimizada. É hora do Trade!")
+                        elif distancia_entrada < 5.0:
+                            st.warning("🟡 **PROXIMO À ZONA DE COMPRA**")
+                            st.markdown(f"Faltam apenas `{distancia_entrada:.2f}%` de queda para encostar na linha ideal.")
+                        else:
+                            st.info("⚪ **FORA DA ZONA DE TRADE**")
+                            st.markdown(f"O preço está `{distancia_entrada:.2f}%` seguro acima da banda de entrada. Aguardar.")
+
+                        st.markdown(f"""
+                        **🎯 Plano de Voo (Se comprar na Linha Branca):**
+                        - ⬇️ **Entrada Ideal:** R$ {entrada_lr:.2f}
+                        - 🎯 **Alvo Take Profit (+{b_tp*100:.0f}%):** R$ {alvo_estimado:.2f} *(Ou R$ {alvo_media:.2f} na Média Central)*
+                        - 🛑 **Stop Loss Proteção (-{b_sl*100:.0f}%):** R$ {stop_estimado:.2f}
+                        - 📊 **Probabilidade Histórica:** **{stats['win_rate']:.1f}%** de chance da ação bater no alvo antes de bater no stop, caso você entre no preço indicado!
+                        """)
+                    
+                    with op_c2:
+                        st.plotly_chart(criar_grafico_operacao_atual(df_bt, ticker), use_container_width=True)
                 
     except Exception as e:
         st.error(f"❌ Erro ao processar: {str(e)}")
