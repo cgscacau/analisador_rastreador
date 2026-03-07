@@ -155,10 +155,10 @@ def criar_grafico_backtest(df_bt, ticker):
     return fig
 
 
-def criar_grafico_operacao_atual(df_bt, ticker, period_days=90, window_lr=None, desvios_lr=None):
+def criar_grafico_operacao_atual(df_bt, ticker, period_bars=90, window_lr=None, desvios_lr=None):
     """Cria um gráfico focado no momento atual com o canal de Regressão Linear reto"""
-    # Recorta os últimos dias do dataframe
-    df_zoom = df_bt.tail(period_days).copy()
+    # Recorta as últimas barras do dataframe
+    df_zoom = df_bt.tail(period_bars).copy()
     
     fig = go.Figure()
 
@@ -229,7 +229,7 @@ def criar_grafico_operacao_atual(df_bt, ticker, period_days=90, window_lr=None, 
                 fill='tonexty'
             ))
 
-    titulo_extra = f" (Canal Reto: {window_lr} dias)" if window_lr else ""
+    titulo_extra = f" (Canal Reto: {window_lr} barras)" if window_lr else ""
     fig.update_layout(
         title=f'{ticker} - Momento Atual{titulo_extra}',
         template='plotly_dark',

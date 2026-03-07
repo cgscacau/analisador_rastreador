@@ -275,7 +275,7 @@ if st.session_state.get('analisar_clicado', False):
                     
                     # ==== OPORTUNIDADE ATUAL ====
                     st.markdown("---")
-                    st.subheader("🔎 Avaliação do Trade Mapeado Hoje")
+                    st.subheader("🔎 Avaliação do Trade Mapeado Atualmente")
                     
                     ultimo_fechamento = df_bt['Close'].iloc[-1]
                     entrada_lr = df_bt['Banda_Inferior'].iloc[-1]
@@ -298,7 +298,7 @@ if st.session_state.get('analisar_clicado', False):
                         st.markdown(f"O preço está `{distancia_entrada:.2f}%` seguro acima da banda de entrada. Aguardar.")
 
                     st.markdown(f"""
-                    **🎯 Plano de Voo (Se comprar na Linha Otimizada hoje):**
+                    **🎯 Plano de Voo (Se comprar na Linha Otimizada agora):**
                     - ⬇️ **Entrada Ideal:** R$ {entrada_lr:.2f}
                     - 🎯 **Alvo Take Profit (+{b_tp*100:.0f}%):** R$ {alvo_estimado:.2f} *(Ou R$ {alvo_media:.2f} se encostar na Média Central)*
                     - 🛑 **Stop Loss Proteção (-{b_sl*100:.0f}%):** R$ {stop_estimado:.2f}
