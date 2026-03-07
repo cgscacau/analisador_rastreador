@@ -416,7 +416,7 @@ def simular_retorno_media(df, periodo_mm=20, desvios_entrada=2.0, take_profit_pc
     
     preco_inicio = df_bt['Close'].iloc[periodo_mm] if len(df_bt) > periodo_mm else df_bt['Close'].iloc[0]
     df_bt['Buy_and_Hold'] = capital_inicial * (df_bt['Close'] / preco_inicio)
-    df_bt.loc[0:periodo_mm, 'Buy_and_Hold'] = capital_inicial 
+    df_bt.iloc[0:periodo_mm, df_bt.columns.get_loc('Buy_and_Hold')] = capital_inicial 
     
     retorno_final = ((capital_atual - capital_inicial) / capital_inicial) * 100
     win_rate = (trades_vencedores / trades_realizados * 100) if trades_realizados > 0 else 0
