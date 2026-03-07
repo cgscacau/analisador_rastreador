@@ -115,3 +115,40 @@ def criar_grafico_unificado(df, ticker):
     fig.update_xaxes(rangeslider_visible=False)
     
     return fig
+
+
+def criar_grafico_backtest(df_bt, ticker):
+    """Cria o gráfico de Evolução do Capital vs Buy & Hold"""
+    fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
+        x=df_bt.index,
+        y=df_bt['Capital'],
+        name='Estratégia Retorno à Média',
+        line=dict(color='#00ffcc', width=3)
+    ))
+    
+    fig.add_trace(go.Scatter(
+        x=df_bt.index,
+        y=df_bt['Buy_and_Hold'],
+        name='Buy & Hold (Referência)',
+        line=dict(color='gray', width=2, dash='dash')
+    ))
+    
+    fig.update_layout(
+        title=f'{ticker} - Evolução do Capital (Backtest)',
+        yaxis_title='Capital (R$)',
+        xaxis_title='Data',
+        template='plotly_dark',
+        height=500,
+        hovermode='x unified',
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
+    )
+    
+    return fig

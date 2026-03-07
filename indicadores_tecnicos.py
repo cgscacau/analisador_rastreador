@@ -341,3 +341,140 @@ def gerar_sinais(df):
 import numpy as np
 from itertools import product
 
+# ============================================================================
+# BACKTESTING RETORNO À MÉDIA
+# ============================================================================
+
+def simular_retorno_media(df, periodo_mm=20, desvios_entrada=2.0, take_profit_pct=0.05, stop_loss_pct=0.03):
+    """
+    Simula uma estratégia de retorno à média comprando na banda inferior das
+    Bandas de Bollinger e vendendo no alvo (TP), stop (SL) ou no retorno à média.
+    Retorna o dataframe com os resultados (curva de capital) e estatísticas.
+    """
+    df_bt = df[['Open', 'High', 'Low', 'Close']].copy()
+    
+    df_bt['SMA'] = df_bt['Close'].rolling(window=periodo_mm).mean()
+    std = df_bt['Close'].rolling(window=periodo_mm).std()
+    df_bt['Banda_Inferior'] = df_bt['SMA'] - (desvios_entrada * std)
+    
+    posicionado = False
+    preco_entrada = 0.0
+    capital_inicial = 1000.0
+    capital_atual = capital_inicial
+    
+    capital_curve = np.zeros(len(df_bt))
+    capital_curve[:] = capital_inicial
+    
+    sinais_compra = [] 
+    sinais_venda = []  
+    
+    trades_realizados = 0
+    trades_vencedores = 0
+    
+    for i in range(periodo_mm, len(df_bt)):
+        preco_hoje = df_bt['Close'].iloc[i]
+        
+        if not posicionado:
+            if df_bt['Close'].iloc[i-1] < df_bt['Banda_Inferior'].iloc[i-1]:
+                posicionado = True
+                preco_entrada = preco_hoje 
+                sinais_compra.append((df_bt.index[i], preco_entrada))
+        else:
+            retorno_atual = (preco_hoje - preco_entrada) / preco_entrada
+            
+            saiu = False
+            motivo_saida = ""
+            
+            if retorno_atual >= take_profit_pct:
+                saiu = True
+                motivo_saida = "TP"
+            elif retorno_atual <= -stop_loss_pct:
+                saiu = True
+                motivo_saida = "SL"
+            elif preco_hoje >= df_bt['SMA'].iloc[i]:
+                saiu = True
+                motivo_saida = "Media"
+                
+            if saiu:
+                posicionado = False
+                resultado_financeiro = (preco_hoje - preco_entrada) / preco_entrada
+                capital_atual = capital_atual * (1 + resultado_financeiro)
+                
+                sinais_venda.append((df_bt.index[i], preco_hoje, motivo_saida))
+                
+                trades_realizados += 1
+                if resultado_financeiro > 0:
+                    trades_vencedores += 1
+        
+        if posicionado:
+            retorno_aberto = (preco_hoje - preco_entrada) / preco_entrada
+            capital_curve[i] = capital_atual * (1 + retorno_aberto)
+        else:
+            capital_curve[i] = capital_atual
+
+    df_bt['Capital'] = capital_curve
+    
+    preco_inicio = df_bt['Close'].iloc[periodo_mm] if len(df_bt) > periodo_mm else df_bt['Close'].iloc[0]
+    df_bt['Buy_and_Hold'] = capital_inicial * (df_bt['Close'] / preco_inicio)
+    df_bt.loc[0:periodo_mm, 'Buy_and_Hold'] = capital_inicial 
+    
+    retorno_final = ((capital_atual - capital_inicial) / capital_inicial) * 100
+    win_rate = (trades_vencedores / trades_realizados * 100) if trades_realizados > 0 else 0
+    
+    estatisticas = {
+        'capital_final': capital_atual,
+        'retorno_pct': retorno_final,
+        'trades_realizados': trades_realizados,
+        'win_rate': win_rate,
+        'sinais_compra': sinais_compra,
+        'sinais_venda': sinais_venda
+    }
+    
+    return df_bt, estatisticas
+
+
+def otimizar_retorno_media(df, max_trials=150):
+    """
+    Testa combinações de parâmetros fazendo um Grid Search (Brute Force controlada).
+    """
+    periodos_mm = [10, 20, 30]
+    desvios = [1.5, 2.0, 2.5]
+    take_profits = [0.03, 0.05, 0.08, 0.10]
+    stop_losses = [0.02, 0.03, 0.05]
+    
+    todas_combinacoes = list(product(periodos_mm, desvios, take_profits, stop_losses))
+    
+    melhor_capital = 0
+    melhores_params = None
+    melhor_stats = None
+    
+    combinacoes_testar = todas_combinacoes[:max_trials]
+    
+    for comb in combinacoes_testar:
+        p_mm, p_dev, p_tp, p_sl = comb
+        
+        if p_sl >= p_tp:
+            continue
+            
+        _, stats = simular_retorno_media(df, p_mm, p_dev, p_tp, p_sl)
+        
+        if stats['capital_final'] > melhor_capital:
+            melhor_capital = stats['capital_final']
+            melhores_params = {
+                'periodo_mm': p_mm,
+                'desvios_entrada': p_dev,
+                'take_profit_pct': p_tp,
+                'stop_loss_pct': p_sl
+            }
+            melhor_stats = stats
+            
+    if melhores_params is None:
+        melhores_params = {
+            'periodo_mm': 20,
+            'desvios_entrada': 2.0,
+            'take_profit_pct': 0.05,
+            'stop_loss_pct': 0.03
+        }
+        _, melhor_stats = simular_retorno_media(df, 20, 2.0, 0.05, 0.03)
+        
+    return melhores_params, melhor_stats
