@@ -243,23 +243,22 @@ if st.session_state.get('analisar_clicado', False):
                     if 'p_tp' not in st.session_state: st.session_state.p_tp = 0.05
                     if 'p_sl' not in st.session_state: st.session_state.p_sl = 0.03
                     
-                    def aplicar_melhores_parametros():
+                    col_p1, col_p2 = st.columns(2)
+                    with col_p1:
+                        b_mm = st.number_input("Período da Regressão (Canal)", min_value=10, max_value=100, value=int(st.session_state.p_mm), step=5)
+                        b_dev = st.number_input("Desvios para Entrada (Linhas LR)", min_value=1.0, max_value=4.0, value=float(st.session_state.p_dev), step=0.5)
+                    with col_p2:
+                        b_tp = st.number_input("Take Profit %", min_value=0.01, max_value=0.20, value=float(st.session_state.p_tp), step=0.01)
+                        b_sl = st.number_input("Stop Loss %", min_value=0.01, max_value=0.20, value=float(st.session_state.p_sl), step=0.01)
+                    
+                    if st.button("✨ Otimizar Melhores Parâmetros", type="primary"):
                         with st.spinner("Testando dezenas de combinações no passado..."):
                             melhores_p, _ = executar_otimizacao(df)
                             st.session_state.p_mm = melhores_p['periodo_mm']
                             st.session_state.p_dev = melhores_p['desvios_entrada']
                             st.session_state.p_tp = melhores_p['take_profit_pct']
                             st.session_state.p_sl = melhores_p['stop_loss_pct']
-
-                    col_p1, col_p2 = st.columns(2)
-                    with col_p1:
-                        b_mm = st.number_input("Período da Regressão (Canal)", min_value=10, max_value=100, value=int(st.session_state.p_mm), step=5, key="btn_mm")
-                        b_dev = st.number_input("Desvios para Entrada (Linhas LR)", min_value=1.0, max_value=4.0, value=float(st.session_state.p_dev), step=0.5, key="btn_dev")
-                    with col_p2:
-                        b_tp = st.number_input("Take Profit %", min_value=0.01, max_value=0.20, value=float(st.session_state.p_tp), step=0.01, key="btn_tp")
-                        b_sl = st.number_input("Stop Loss %", min_value=0.01, max_value=0.20, value=float(st.session_state.p_sl), step=0.01, key="btn_sl")
-                    
-                    st.button("✨ Otimizar Melhores Parâmetros", type="primary", on_click=aplicar_melhores_parametros)
+                            st.rerun()
                             
                     df_bt, stats = executar_backtest(df, b_mm, b_dev, b_tp, b_sl)
                     
@@ -286,29 +285,27 @@ if st.session_state.get('analisar_clicado', False):
                     
                     distancia_entrada = ((ultimo_fechamento - entrada_lr) / entrada_lr) * 100
                     
-                    op_c1, op_c2 = st.columns([1, 2])
+                    st.markdown("---")
                     
-                    with op_c1:
-                        if ultimo_fechamento <= entrada_lr * 1.01: # margem de 1%
-                            st.success("🟢 **SINAL DE ENTRADA ATIVO!**")
-                            st.markdown(f"O preço de `{ultimo_fechamento:.2f}` está testando a Banda Inferior Otimizada. É hora do Trade!")
-                        elif distancia_entrada < 5.0:
-                            st.warning("🟡 **PROXIMO À ZONA DE COMPRA**")
-                            st.markdown(f"Faltam apenas `{distancia_entrada:.2f}%` de queda para encostar na linha ideal.")
-                        else:
-                            st.info("⚪ **FORA DA ZONA DE TRADE**")
-                            st.markdown(f"O preço está `{distancia_entrada:.2f}%` seguro acima da banda de entrada. Aguardar.")
+                    if ultimo_fechamento <= entrada_lr * 1.01: # margem de 1%
+                        st.success("🟢 **SINAL DE ENTRADA ATIVO!**")
+                        st.markdown(f"O preço de `{ultimo_fechamento:.2f}` está testando a Banda Inferior Otimizada. É hora do Trade!")
+                    elif distancia_entrada < 5.0:
+                        st.warning("🟡 **PROXIMO À ZONA DE COMPRA**")
+                        st.markdown(f"Faltam apenas `{distancia_entrada:.2f}%` de queda para encostar na linha ideal.")
+                    else:
+                        st.info("⚪ **FORA DA ZONA DE TRADE**")
+                        st.markdown(f"O preço está `{distancia_entrada:.2f}%` seguro acima da banda de entrada. Aguardar.")
 
-                        st.markdown(f"""
-                        **🎯 Plano de Voo (Se comprar na Linha Branca):**
-                        - ⬇️ **Entrada Ideal:** R$ {entrada_lr:.2f}
-                        - 🎯 **Alvo Take Profit (+{b_tp*100:.0f}%):** R$ {alvo_estimado:.2f} *(Ou R$ {alvo_media:.2f} na Média Central)*
-                        - 🛑 **Stop Loss Proteção (-{b_sl*100:.0f}%):** R$ {stop_estimado:.2f}
-                        - 📊 **Probabilidade Histórica:** **{stats['win_rate']:.1f}%** de chance da ação bater no alvo antes de bater no stop, caso você entre no preço indicado!
-                        """)
+                    st.markdown(f"""
+                    **🎯 Plano de Voo (Se comprar na Linha Otimizada hoje):**
+                    - ⬇️ **Entrada Ideal:** R$ {entrada_lr:.2f}
+                    - 🎯 **Alvo Take Profit (+{b_tp*100:.0f}%):** R$ {alvo_estimado:.2f} *(Ou R$ {alvo_media:.2f} se encostar na Média Central)*
+                    - 🛑 **Stop Loss Proteção (-{b_sl*100:.0f}%):** R$ {stop_estimado:.2f}
+                    - 📊 **Probabilidade Histórica:** **{stats['win_rate']:.1f}%** de chance da ação bater no alvo antes do stop (Baseado nos {stats['trades_realizados']} trades simulados)
+                    """)
                     
-                    with op_c2:
-                        st.plotly_chart(criar_grafico_operacao_atual(df_bt, ticker), use_container_width=True)
+                    st.plotly_chart(criar_grafico_operacao_atual(df_bt, ticker, period_days=int(b_mm)+40, window_lr=int(b_mm), desvios_lr=float(b_dev)), use_container_width=True)
                 
     except Exception as e:
         st.error(f"❌ Erro ao processar: {str(e)}")

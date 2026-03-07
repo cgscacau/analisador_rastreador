@@ -1,6 +1,7 @@
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import pandas as pd
+import numpy as np
 
 def criar_grafico_unificado(df, ticker):
     """Cria gráfico unificado com subplots (Candlestick, Volume, RSI e MACD)"""
@@ -154,10 +155,10 @@ def criar_grafico_backtest(df_bt, ticker):
     return fig
 
 
-def criar_grafico_operacao_atual(df_bt, ticker, period_days=90):
-    """Cria um gráfico focado no momento atual com o canal de Regressão Linear"""
-    # Recorta os últimos dias do dataframe processado de backtest
-    df_zoom = df_bt.tail(period_days)
+def criar_grafico_operacao_atual(df_bt, ticker, period_days=90, window_lr=None, desvios_lr=None):
+    """Cria um gráfico focado no momento atual com o canal de Regressão Linear reto"""
+    # Recorta os últimos dias do dataframe
+    df_zoom = df_bt.tail(period_days).copy()
     
     fig = go.Figure()
 
@@ -168,32 +169,80 @@ def criar_grafico_operacao_atual(df_bt, ticker, period_days=90):
         high=df_zoom['High'],
         low=df_zoom['Low'],
         close=df_zoom['Close'],
-        name='Preço'
+        name='Preço',
+        increasing_line_color='#26a69a',
+        decreasing_line_color='#ef5350'
     ))
 
-    # Linhas da Regressão Linear do Backtest (Média e Inferior)
-    if 'LRL' in df_zoom.columns:
+    # Calcula Linhas Curvas por padrão ou Linhas Retas se parâmetros forem passados
+    if window_lr is not None and desvios_lr is not None and len(df_bt) >= window_lr:
+        df_lr = df_bt.tail(window_lr)
+        x_vals = np.arange(window_lr)
+        y_vals = df_lr['Close'].values
+        slope, intercept = np.polyfit(x_vals, y_vals, 1)
+        
+        lr_line = intercept + slope * x_vals
+        std_dev = df_lr['Close'].std()
+        lr_upper = lr_line + (desvios_lr * std_dev)
+        lr_lower = lr_line - (desvios_lr * std_dev)
+        
+        # Banda Superior Reta
         fig.add_trace(go.Scatter(
-            x=df_zoom.index, y=df_zoom['LRL'],
-            name='LR Média (Alvo Central)',
-            line=dict(color='blue', dash='dash'),
-            opacity=0.7
+            x=df_lr.index, y=lr_upper,
+            name='Banda Superior (LR)',
+            line=dict(color='rgba(255, 100, 100, 0.8)', dash='dash'),
+            mode='lines'
         ))
-    if 'Banda_Inferior' in df_zoom.columns:
+        
+        # Linha Central Reta
         fig.add_trace(go.Scatter(
-            x=df_zoom.index, y=df_zoom['Banda_Inferior'],
-            name='LR Inferior (Linha de Compra)',
-            line=dict(color='gray', dash='dash'),
-            opacity=0.7,
-            fill='tonexty' # Preenche da banda inferior até a media
+            x=df_lr.index, y=lr_line,
+            name='Linha Central (Média)',
+            line=dict(color='rgba(100, 200, 255, 0.8)', width=2),
+            mode='lines'
         ))
+        
+        # Banda Inferior Reta
+        fig.add_trace(go.Scatter(
+            x=df_lr.index, y=lr_lower,
+            name='Banda Inferior (Compra)',
+            line=dict(color='rgba(100, 255, 100, 0.8)', dash='dash'),
+            mode='lines',
+            fill='tonexty',
+            fillcolor='rgba(100, 255, 100, 0.1)' 
+        ))
+    else:
+        # Fallback para o backtest de curvas 
+        if 'LRL' in df_zoom.columns:
+            fig.add_trace(go.Scatter(
+                x=df_zoom.index, y=df_zoom['LRL'],
+                name='LR Média (Curva)',
+                line=dict(color='blue', dash='dash'),
+                opacity=0.7
+            ))
+        if 'Banda_Inferior' in df_zoom.columns:
+            fig.add_trace(go.Scatter(
+                x=df_zoom.index, y=df_zoom['Banda_Inferior'],
+                name='LR Inferior (Curva)',
+                line=dict(color='gray', dash='dash'),
+                opacity=0.7,
+                fill='tonexty'
+            ))
 
+    titulo_extra = f" (Canal Reto: {window_lr} dias)" if window_lr else ""
     fig.update_layout(
-        title=f'{ticker} - Momento Atual (Zoom da Regressão Linear)',
+        title=f'{ticker} - Momento Atual{titulo_extra}',
         template='plotly_dark',
-        height=400,
+        height=500,
         margin=dict(l=20, r=20, t=40, b=20),
-        xaxis_rangeslider_visible=False
+        xaxis_rangeslider_visible=False,
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        )
     )
     
     return fig
