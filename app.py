@@ -8,9 +8,11 @@ from indicadores_tecnicos import (
     calcular_score_compra_venda,
     calcular_metricas_risco,
     gerar_recomendacao_estrategia,
-    gerar_sinais
+    gerar_sinais,
+    simular_retorno_media,
+    otimizar_retorno_media
 )
-from visualizacao import criar_grafico_unificado
+from visualizacao import criar_grafico_unificado, criar_grafico_backtest
 
 st.set_page_config(page_title="Analisador de Ações", layout="wide")
 
@@ -26,6 +28,14 @@ def obter_dados_yahoo(ticker, periodo, intervalo):
 @st.cache_data
 def processar_indicadores(df):
     return calcular_indicadores(df.copy())
+
+@st.cache_data
+def executar_backtest(df, p_mm, p_dev, p_tp, p_sl):
+    return simular_retorno_media(df.copy(), p_mm, p_dev, p_tp, p_sl)
+
+@st.cache_data
+def executar_otimizacao(df):
+    return otimizar_retorno_media(df.copy())
 
 # ============================================================================
 # FUNÇÕES DE VISUALIZAÇÃO INTERNAS (Resumo)
@@ -174,7 +184,7 @@ if analisar:
                 df = processar_indicadores(df)
                 
                 # Instanciar as abas
-                tab1, tab2 = st.tabs(["📊 Dashboard e Gráficos", "📋 Dados Detalhados"])
+                tab1, tab2, tab3 = st.tabs(["📊 Dashboard e Gráficos", "📋 Dados Detalhados", "🔁 Otimização de Retorno à Média"])
                 
                 with tab1:
                     # Informações básicas
@@ -223,6 +233,45 @@ if analisar:
                 with tab2:
                     st.subheader("📋 Tabela de Histórico e Indicadores")
                     st.dataframe(df.tail(100).iloc[::-1], use_container_width=True)
+                
+                with tab3:
+                    st.subheader("⚙️ Otimização de Retorno à Média (Backtest)")
+                    st.markdown("Testa a estratégia de comprar na Banda de Bollinger inferior e vender no alvo, stop ou na Média Central.")
+                    
+                    if 'p_mm' not in st.session_state: st.session_state.p_mm = 20
+                    if 'p_dev' not in st.session_state: st.session_state.p_dev = 2.0
+                    if 'p_tp' not in st.session_state: st.session_state.p_tp = 0.05
+                    if 'p_sl' not in st.session_state: st.session_state.p_sl = 0.03
+                    
+                    col_p1, col_p2 = st.columns(2)
+                    with col_p1:
+                        b_mm = st.number_input("Período da Média (SMA)", min_value=10, max_value=100, value=int(st.session_state.p_mm), step=5)
+                        b_dev = st.number_input("Desvios para Entrada (Bollinger)", min_value=1.0, max_value=4.0, value=float(st.session_state.p_dev), step=0.5)
+                    with col_p2:
+                        b_tp = st.number_input("Take Profit %", min_value=0.01, max_value=0.20, value=float(st.session_state.p_tp), step=0.01)
+                        b_sl = st.number_input("Stop Loss %", min_value=0.01, max_value=0.20, value=float(st.session_state.p_sl), step=0.01)
+                    
+                    if st.button("✨ Otimizar Melhores Parâmetros", type="primary"):
+                        with st.spinner("Testando dezenas de combinações no passado..."):
+                            melhores_p, _ = executar_otimizacao(df)
+                            st.session_state.p_mm = melhores_p['periodo_mm']
+                            st.session_state.p_dev = melhores_p['desvios_entrada']
+                            st.session_state.p_tp = melhores_p['take_profit_pct']
+                            st.session_state.p_sl = melhores_p['stop_loss_pct']
+                            st.rerun()
+                            
+                    df_bt, stats = executar_backtest(df, b_mm, b_dev, b_tp, b_sl)
+                    
+                    st.markdown("---")
+                    st.plotly_chart(criar_grafico_backtest(df_bt, ticker), use_container_width=True)
+                    
+                    rm_c1, rm_c2, rm_c3, rm_c4 = st.columns(4)
+                    rm_c1.metric("Retorno Estratégia", f"{stats['retorno_pct']:.2f}%")
+                    rm_c2.metric("Trades Realizados", stats['trades_realizados'])
+                    rm_c3.metric("Win Rate", f"{stats['win_rate']:.1f}%")
+                    
+                    retorno_bh = ((df_bt['Buy_and_Hold'].iloc[-1] - 1000) / 1000) * 100
+                    rm_c4.metric("Comparação (Buy&Hold)", f"{retorno_bh:.2f}%")
                 
     except Exception as e:
         st.error(f"❌ Erro ao processar: {str(e)}")
