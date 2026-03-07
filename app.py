@@ -243,22 +243,23 @@ if analisar:
                     if 'p_tp' not in st.session_state: st.session_state.p_tp = 0.05
                     if 'p_sl' not in st.session_state: st.session_state.p_sl = 0.03
                     
-                    col_p1, col_p2 = st.columns(2)
-                    with col_p1:
-                        b_mm = st.number_input("Período da Média (SMA)", min_value=10, max_value=100, value=int(st.session_state.p_mm), step=5)
-                        b_dev = st.number_input("Desvios para Entrada (Bollinger)", min_value=1.0, max_value=4.0, value=float(st.session_state.p_dev), step=0.5)
-                    with col_p2:
-                        b_tp = st.number_input("Take Profit %", min_value=0.01, max_value=0.20, value=float(st.session_state.p_tp), step=0.01)
-                        b_sl = st.number_input("Stop Loss %", min_value=0.01, max_value=0.20, value=float(st.session_state.p_sl), step=0.01)
-                    
-                    if st.button("✨ Otimizar Melhores Parâmetros", type="primary"):
+                    def aplicar_melhores_parametros():
                         with st.spinner("Testando dezenas de combinações no passado..."):
                             melhores_p, _ = executar_otimizacao(df)
                             st.session_state.p_mm = melhores_p['periodo_mm']
                             st.session_state.p_dev = melhores_p['desvios_entrada']
                             st.session_state.p_tp = melhores_p['take_profit_pct']
                             st.session_state.p_sl = melhores_p['stop_loss_pct']
-                            st.rerun()
+
+                    col_p1, col_p2 = st.columns(2)
+                    with col_p1:
+                        b_mm = st.number_input("Período da Média (SMA)", min_value=10, max_value=100, value=int(st.session_state.p_mm), step=5, key="btn_mm")
+                        b_dev = st.number_input("Desvios para Entrada (Bollinger)", min_value=1.0, max_value=4.0, value=float(st.session_state.p_dev), step=0.5, key="btn_dev")
+                    with col_p2:
+                        b_tp = st.number_input("Take Profit %", min_value=0.01, max_value=0.20, value=float(st.session_state.p_tp), step=0.01, key="btn_tp")
+                        b_sl = st.number_input("Stop Loss %", min_value=0.01, max_value=0.20, value=float(st.session_state.p_sl), step=0.01, key="btn_sl")
+                    
+                    st.button("✨ Otimizar Melhores Parâmetros", type="primary", on_click=aplicar_melhores_parametros)
                             
                     df_bt, stats = executar_backtest(df, b_mm, b_dev, b_tp, b_sl)
                     
