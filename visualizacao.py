@@ -20,22 +20,22 @@ def criar_grafico_unificado(df, ticker):
         showlegend=False
     ), row=1, col=1)
     
-    # Bandas de Bollinger
+    # Canal de Regressão Linear
     fig.add_trace(go.Scatter(
-        x=df.index, y=df['BB_upper'],
-        name='BB Superior',
+        x=df.index, y=df['LR_upper'],
+        name='LR Superior',
         line=dict(color='gray', dash='dash'),
         opacity=0.5
     ), row=1, col=1)
     fig.add_trace(go.Scatter(
-        x=df.index, y=df['BB_middle'],
-        name='BB Média',
+        x=df.index, y=df['LR_middle'],
+        name='LR Média',
         line=dict(color='blue', dash='dash'),
         opacity=0.5
     ), row=1, col=1)
     fig.add_trace(go.Scatter(
-        x=df.index, y=df['BB_lower'],
-        name='BB Inferior',
+        x=df.index, y=df['LR_lower'],
+        name='LR Inferior',
         line=dict(color='gray', dash='dash'),
         opacity=0.5,
         fill='tonexty'

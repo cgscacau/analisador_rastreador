@@ -170,8 +170,11 @@ with st.sidebar:
         
         analisar = st.form_submit_button("🔍 Analisar", type="primary", use_container_width=True)
 
-# Conteúdo principal
 if analisar:
+    st.session_state.analisar_clicado = True
+
+# Conteúdo principal
+if st.session_state.get('analisar_clicado', False):
     try:
         with st.spinner(f"Carregando dados de {ticker}..."):
             # Baixar dados
@@ -235,8 +238,8 @@ if analisar:
                     st.dataframe(df.tail(100).iloc[::-1], use_container_width=True)
                 
                 with tab3:
-                    st.subheader("⚙️ Otimização de Retorno à Média (Backtest)")
-                    st.markdown("Testa a estratégia de comprar na Banda de Bollinger inferior e vender no alvo, stop ou na Média Central.")
+                    st.subheader("⚙️ Otimização de Retorno à Média (Regressão Linear)")
+                    st.markdown("Testa a estratégia de comprar na Banda Inferior de Regressão Linear e vender no alvo, stop ou na Linha Central.")
                     
                     if 'p_mm' not in st.session_state: st.session_state.p_mm = 20
                     if 'p_dev' not in st.session_state: st.session_state.p_dev = 2.0
@@ -253,8 +256,8 @@ if analisar:
 
                     col_p1, col_p2 = st.columns(2)
                     with col_p1:
-                        b_mm = st.number_input("Período da Média (SMA)", min_value=10, max_value=100, value=int(st.session_state.p_mm), step=5, key="btn_mm")
-                        b_dev = st.number_input("Desvios para Entrada (Bollinger)", min_value=1.0, max_value=4.0, value=float(st.session_state.p_dev), step=0.5, key="btn_dev")
+                        b_mm = st.number_input("Período da Regressão (Canal)", min_value=10, max_value=100, value=int(st.session_state.p_mm), step=5, key="btn_mm")
+                        b_dev = st.number_input("Desvios para Entrada (Linhas LR)", min_value=1.0, max_value=4.0, value=float(st.session_state.p_dev), step=0.5, key="btn_dev")
                     with col_p2:
                         b_tp = st.number_input("Take Profit %", min_value=0.01, max_value=0.20, value=float(st.session_state.p_tp), step=0.01, key="btn_tp")
                         b_sl = st.number_input("Stop Loss %", min_value=0.01, max_value=0.20, value=float(st.session_state.p_sl), step=0.01, key="btn_sl")

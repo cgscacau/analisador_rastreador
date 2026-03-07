@@ -13,11 +13,18 @@ def calcular_indicadores(df):
     df['MACD_signal'] = macd.macd_signal()
     df['MACD_hist'] = macd.macd_diff()
     
-    # Bandas de Bollinger
-    bollinger = ta.volatility.BollingerBands(close=df['Close'], window=20, window_dev=2)
-    df['BB_upper'] = bollinger.bollinger_hband()
-    df['BB_middle'] = bollinger.bollinger_mavg()
-    df['BB_lower'] = bollinger.bollinger_lband()
+    # Canal de Regressão Linear (Substituindo Bollinger)
+    window_lr = 20
+    weights_lr = np.zeros(window_lr)
+    x_m = (window_lr - 1) / 2.0
+    x_v = (window_lr**3 - window_lr) / 12.0
+    for i in range(window_lr):
+        weights_lr[i] = 1.0/window_lr + ((i - x_m) / x_v) * x_m
+        
+    df['LR_middle'] = df['Close'].rolling(window=window_lr).apply(lambda y: np.dot(y, weights_lr), raw=True)
+    std_lr = df['Close'].rolling(window=window_lr).std()
+    df['LR_upper'] = df['LR_middle'] + (2 * std_lr)
+    df['LR_lower'] = df['LR_middle'] - (2 * std_lr)
     
     # Médias Móveis
     df['SMA_20'] = ta.trend.SMAIndicator(close=df['Close'], window=20).sma_indicator()
@@ -90,15 +97,15 @@ def calcular_score_compra_venda(df):
             score -= 0.5
             detalhes.append(("MACD Negativo", -0.5, "Bearish"))
     
-    # Bandas de Bollinger (peso: 1.5)
-    if not pd.isna(ultima_linha['BB_lower']):
-        bb_position = (ultima_linha['Close'] - ultima_linha['BB_lower']) / (ultima_linha['BB_upper'] - ultima_linha['BB_lower'])
-        if bb_position < 0.2:
+    # Canal de Regressão Linear (peso: 1.5)
+    if 'LR_lower' in df.columns and not pd.isna(ultima_linha['LR_lower']):
+        lr_position = (ultima_linha['Close'] - ultima_linha['LR_lower']) / (ultima_linha['LR_upper'] - ultima_linha['LR_lower'])
+        if lr_position < 0.2:
             score += 1.5
-            detalhes.append(("Preço na Banda Inferior", 1.5, "Bullish"))
-        elif bb_position > 0.8:
+            detalhes.append(("Preço na Banda Inferior (LR)", 1.5, "Bullish"))
+        elif lr_position > 0.8:
             score -= 1.5
-            detalhes.append(("Preço na Banda Superior", -1.5, "Bearish"))
+            detalhes.append(("Preço na Banda Superior (LR)", -1.5, "Bearish"))
     
     # Médias Móveis (peso: 2)
     if not pd.isna(ultima_linha['SMA_20']) and not pd.isna(ultima_linha['SMA_50']):
@@ -312,12 +319,12 @@ def gerar_sinais(df):
               ultima_linha['MACD'] < ultima_linha['MACD_signal']):
             sinais.append(("🔴 VENDA", "MACD cruzou abaixo da linha de sinal"))
     
-    # Sinal Bandas de Bollinger
-    if not pd.isna(ultima_linha['BB_lower']):
-        if ultima_linha['Close'] < ultima_linha['BB_lower']:
-            sinais.append(("🟢 COMPRA", "Preço abaixo da banda inferior de Bollinger"))
-        elif ultima_linha['Close'] > ultima_linha['BB_upper']:
-            sinais.append(("🔴 VENDA", "Preço acima da banda superior de Bollinger"))
+    # Sinal Canal de Regressão Linear
+    if 'LR_lower' in df.columns and not pd.isna(ultima_linha['LR_lower']):
+        if ultima_linha['Close'] < ultima_linha['LR_lower']:
+            sinais.append(("🟢 COMPRA", "Preço abaixo da banda inferior de Regressão"))
+        elif ultima_linha['Close'] > ultima_linha['LR_upper']:
+            sinais.append(("🔴 VENDA", "Preço acima da banda superior de Regressão"))
     
     # Sinal Médias Móveis
     if penultima_linha is not None and not pd.isna(ultima_linha['SMA_20']):
@@ -348,14 +355,21 @@ from itertools import product
 def simular_retorno_media(df, periodo_mm=20, desvios_entrada=2.0, take_profit_pct=0.05, stop_loss_pct=0.03):
     """
     Simula uma estratégia de retorno à média comprando na banda inferior das
-    Bandas de Bollinger e vendendo no alvo (TP), stop (SL) ou no retorno à média.
+    Linhas de Regressão Linear e vendendo no alvo (TP), stop (SL) ou no retorno à regressão média.
     Retorna o dataframe com os resultados (curva de capital) e estatísticas.
     """
     df_bt = df[['Open', 'High', 'Low', 'Close']].copy()
     
-    df_bt['SMA'] = df_bt['Close'].rolling(window=periodo_mm).mean()
-    std = df_bt['Close'].rolling(window=periodo_mm).std()
-    df_bt['Banda_Inferior'] = df_bt['SMA'] - (desvios_entrada * std)
+    window = int(periodo_mm)
+    weights = np.zeros(window)
+    x_avg = (window - 1) / 2.0
+    x_var = (window**3 - window) / 12.0
+    for i in range(window):
+        weights[i] = 1.0/window + ((i - x_avg) / x_var) * x_avg
+        
+    df_bt['LRL'] = df_bt['Close'].rolling(window=window).apply(lambda y: np.dot(y, weights), raw=True)
+    std = df_bt['Close'].rolling(window=window).std()
+    df_bt['Banda_Inferior'] = df_bt['LRL'] - (desvios_entrada * std)
     
     posicionado = False
     preco_entrada = 0.0
@@ -391,7 +405,7 @@ def simular_retorno_media(df, periodo_mm=20, desvios_entrada=2.0, take_profit_pc
             elif retorno_atual <= -stop_loss_pct:
                 saiu = True
                 motivo_saida = "SL"
-            elif preco_hoje >= df_bt['SMA'].iloc[i]:
+            elif preco_hoje >= df_bt['LRL'].iloc[i]:
                 saiu = True
                 motivo_saida = "Media"
                 
