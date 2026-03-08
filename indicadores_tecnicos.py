@@ -1,8 +1,10 @@
 import pandas as pd
+import numpy as np
 import ta
+from itertools import product
 
-def calcular_indicadores(df):
-    """Calcula indicadores técnicos usando a biblioteca ta"""
+def calcular_indicadores(df, **kwargs):
+    """Calcula indicadores técnicos usando a biblioteca ta. Aceita sma_curta e sma_longa como kwargs."""
     
     # RSI
     df['RSI'] = ta.momentum.RSIIndicator(close=df['Close'], window=14).rsi()
@@ -31,9 +33,11 @@ def calcular_indicadores(df):
     df['LR_upper'] = df['LR_middle'] + (2 * std_lr)
     df['LR_lower'] = df['LR_middle'] - (2 * std_lr)
     
-    # Médias Móveis
-    df['SMA_20'] = ta.trend.SMAIndicator(close=df['Close'], window=20).sma_indicator()
-    df['SMA_50'] = ta.trend.SMAIndicator(close=df['Close'], window=50).sma_indicator()
+    # Médias Móveis (usando períodos configuravéis)
+    sma_curta = kwargs.get('sma_curta', 20)
+    sma_longa = kwargs.get('sma_longa', 50)
+    df['SMA_20'] = ta.trend.SMAIndicator(close=df['Close'], window=sma_curta).sma_indicator()
+    df['SMA_50'] = ta.trend.SMAIndicator(close=df['Close'], window=sma_longa).sma_indicator()
     df['EMA_12'] = ta.trend.EMAIndicator(close=df['Close'], window=12).ema_indicator()
     df['EMA_26'] = ta.trend.EMAIndicator(close=df['Close'], window=26).ema_indicator()
     
@@ -57,6 +61,65 @@ def calcular_indicadores(df):
     df['STOCH_d'] = stoch.stoch_signal()
     
     return df
+
+
+def otimizar_sma(df, callback_progresso=None):
+    """
+    Testa combinações de períodos de SMA curta e longa usando Golden/Death Cross como sinal.
+    Simula entradas no Golden Cross e saídas no Death Cross, calculando o retorno acumulado.
+    Retorna o melhor par de períodos encontrado.
+    """
+    periodos_curtos = [5, 8, 10, 15, 20]
+    periodos_longos = [30, 50, 70, 100, 150, 200]
+    
+    combos_validos = [(c, l) for c, l in product(periodos_curtos, periodos_longos) if c < l]
+    total = len(combos_validos)
+    
+    melhor_retorno = -999
+    melhores_periodos = (20, 50)
+    melhor_n_trades = 0
+    
+    for i, (sma_c, sma_l) in enumerate(combos_validos):
+        if callback_progresso:
+            pct = int((i / total) * 100)
+            callback_progresso(pct, f"🔍 Testando SMA({sma_c}) vs SMA({sma_l})... ({pct}%)")
+        
+        sma_curta = df['Close'].rolling(sma_c).mean()
+        sma_longa = df['Close'].rolling(sma_l).mean()
+        
+        capital = 1000.0
+        posicionado = False
+        preco_entrada = 0.0
+        n_trades = 0
+        
+        for j in range(1, len(df)):
+            golden = sma_curta.iloc[j-1] < sma_longa.iloc[j-1] and sma_curta.iloc[j] > sma_longa.iloc[j]
+            death = sma_curta.iloc[j-1] > sma_longa.iloc[j-1] and sma_curta.iloc[j] < sma_longa.iloc[j]
+            
+            if golden and not posicionado:
+                posicionado = True
+                preco_entrada = df['Close'].iloc[j]
+            elif death and posicionado:
+                retorno = (df['Close'].iloc[j] - preco_entrada) / preco_entrada
+                capital *= (1 + retorno)
+                posicionado = False
+                n_trades += 1
+        
+        retorno_final = ((capital - 1000) / 1000) * 100
+        if retorno_final > melhor_retorno and n_trades >= 2:
+            melhor_retorno = retorno_final
+            melhores_periodos = (sma_c, sma_l)
+            melhor_n_trades = n_trades
+    
+    if callback_progresso:
+        callback_progresso(100, "✅ Otimização de SMAs concluída!")
+    
+    return {
+        'sma_curta': melhores_periodos[0],
+        'sma_longa': melhores_periodos[1],
+        'retorno_pct': melhor_retorno,
+        'n_trades': melhor_n_trades
+    }
 
 # ============================================================================
 # FUNÇÕES DE ANÁLISE E SCORING

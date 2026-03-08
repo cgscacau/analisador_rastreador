@@ -10,6 +10,7 @@ from indicadores_tecnicos import (
     gerar_recomendacao_estrategia,
     gerar_sinais,
     simular_retorno_media,
+    otimizar_sma,
     otimizar_retorno_media
 )
 from visualizacao import criar_grafico_unificado, criar_grafico_backtest, criar_grafico_operacao_atual
@@ -197,8 +198,10 @@ if st.session_state.get('analisar_clicado', False):
             if df.empty:
                 st.error("❌ Não foi possível carregar os dados. Verifique o ticker.")
             else:
-                # Calcular indicadores
-                df = processar_indicadores(df)
+                # Calcular indicadores (usando SMAs otimizadas se disponíveis)
+                sma_c = st.session_state.get('sma_curta', 20)
+                sma_l = st.session_state.get('sma_longa', 50)
+                df = calcular_indicadores(df, sma_curta=sma_c, sma_longa=sma_l)
                 
                 # Instanciar as abas
                 tab1, tab2, tab3 = st.tabs(["📊 Dashboard e Gráficos", "📋 Dados Detalhados", "🔁 Otimização de Retorno à Média"])
@@ -293,6 +296,23 @@ if st.session_state.get('analisar_clicado', False):
                                 st.error(f"{sinal}: {descricao}")
                     else:
                         st.info("ℹ️ Nenhum sinal forte identificado no momento.")
+                    
+                    st.markdown("---")
+                    
+                    # ========= OTIMIZADOR DE SMAs =========
+                    sma_c = st.session_state.get('sma_curta', 20)
+                    sma_l = st.session_state.get('sma_longa', 50)
+                    st.markdown(f"📐 **Médias Móveis atuais:** SMA Curta = `{sma_c}` | SMA Longa = `{sma_l}`")
+                    
+                    if st.button("⚡ Otimizar Períodos das Médias Móveis", type="secondary"):
+                        barra_sma = st.progress(0, text="🔍 Iniciando otimização de SMAs...")
+                        def atualiza_barra(pct, msg):
+                            barra_sma.progress(pct, text=msg)
+                        resultado_sma = otimizar_sma(df, callback_progresso=atualiza_barra)
+                        st.session_state.sma_curta = resultado_sma['sma_curta']
+                        st.session_state.sma_longa = resultado_sma['sma_longa']
+                        st.success(f"✅ Melhor par encontrado: SMA({resultado_sma['sma_curta']}) × SMA({resultado_sma['sma_longa']}) → Retorno histórico de {resultado_sma['retorno_pct']:.1f}% em {resultado_sma['n_trades']} trades")
+                        st.rerun()
                     
                     st.markdown("---")
                     
