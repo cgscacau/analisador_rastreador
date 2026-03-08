@@ -151,24 +151,36 @@ with st.sidebar:
     st.header("⚙️ Configurações")
     
     with st.form(key="config_form"):
-        ticker = st.text_input("Ticker da Ação", value="PETR4.SA", help="Ex: PETR4.SA, VALE3.SA, ITUB4.SA")
+        ticker_input = st.text_input("Ticker da Ação", value=st.session_state.get('ticker', 'PETR4.SA'), help="Ex: PETR4.SA, VALE3.SA, ITUB4.SA")
         
-        periodo = st.selectbox(
+        _periodo_opts = ["1mo", "3mo", "6mo", "1y", "2y", "5y"]
+        _periodo_idx = _periodo_opts.index(st.session_state.get('periodo', '6mo')) if st.session_state.get('periodo', '6mo') in _periodo_opts else 2
+        periodo_input = st.selectbox(
             "Período de Análise",
-            options=["1mo", "3mo", "6mo", "1y", "2y", "5y"],
-            index=2
+            options=_periodo_opts,
+            index=_periodo_idx
         )
         
-        intervalo = st.selectbox(
+        _intervalo_opts = ["1d", "1wk", "1mo"]
+        _intervalo_idx = _intervalo_opts.index(st.session_state.get('intervalo', '1d')) if st.session_state.get('intervalo', '1d') in _intervalo_opts else 0
+        intervalo_input = st.selectbox(
             "Intervalo",
-            options=["1d", "1wk", "1mo"],
-            index=0
+            options=_intervalo_opts,
+            index=_intervalo_idx
         )
         
         analisar = st.form_submit_button("🔍 Analisar", type="primary", use_container_width=True)
 
 if analisar:
     st.session_state.analisar_clicado = True
+    st.session_state.ticker = ticker_input
+    st.session_state.periodo = periodo_input
+    st.session_state.intervalo = intervalo_input
+
+ticker = st.session_state.get('ticker', 'PETR4.SA')
+periodo = st.session_state.get('periodo', '6mo')
+intervalo = st.session_state.get('intervalo', '1d')
+
 
 # Conteúdo principal
 if st.session_state.get('analisar_clicado', False):
@@ -242,6 +254,7 @@ if st.session_state.get('analisar_clicado', False):
                     if 'p_dev' not in st.session_state: st.session_state.p_dev = 2.0
                     if 'p_tp' not in st.session_state: st.session_state.p_tp = 0.05
                     if 'p_sl' not in st.session_state: st.session_state.p_sl = 0.03
+                    if 'otimizando' not in st.session_state: st.session_state.otimizando = False
                     
                     col_p1, col_p2 = st.columns(2)
                     with col_p1:
@@ -252,14 +265,39 @@ if st.session_state.get('analisar_clicado', False):
                         b_sl = st.number_input("Stop Loss %", min_value=0.01, max_value=0.20, value=float(st.session_state.p_sl), step=0.01)
                     
                     if st.button("✨ Otimizar Melhores Parâmetros", type="primary"):
-                        with st.spinner("Testando dezenas de combinações no passado..."):
-                            melhores_p, _ = executar_otimizacao(df)
+                        barra = st.progress(0, text="🔍 Iniciando varredura de parâmetros...")
+                        
+                        from itertools import product as _product
+                        periodos_mm = [10, 20, 30, 40, 50, 60, 90]
+                        desvios = [1.5, 2.0, 2.5, 3.0]
+                        take_profits = [0.03, 0.05, 0.08, 0.10, 0.15]
+                        stop_losses = [0.02, 0.03, 0.05, 0.08]
+                        
+                        combos = [(p, d, tp, sl) for p, d, tp, sl in _product(periodos_mm, desvios, take_profits, stop_losses) if sl < tp]
+                        total = len(combos)
+                        
+                        melhor_capital = 0
+                        melhores_p = None
+                        
+                        for i, (p_mm, p_dev, p_tp, p_sl) in enumerate(combos):
+                            if i % 10 == 0:
+                                pct = int((i / total) * 100)
+                                barra.progress(pct, text=f"🔍 Testando combinação {i}/{total}... ({pct}%)")
+                            _, stats_c = simular_retorno_media(df, p_mm, p_dev, p_tp, p_sl)
+                            if stats_c['capital_final'] > melhor_capital:
+                                melhor_capital = stats_c['capital_final']
+                                melhores_p = {'periodo_mm': p_mm, 'desvios_entrada': p_dev, 'take_profit_pct': p_tp, 'stop_loss_pct': p_sl}
+                        
+                        barra.progress(100, text="✅ Otimização concluída!")
+                        
+                        if melhores_p:
                             st.session_state.p_mm = melhores_p['periodo_mm']
                             st.session_state.p_dev = melhores_p['desvios_entrada']
                             st.session_state.p_tp = melhores_p['take_profit_pct']
                             st.session_state.p_sl = melhores_p['stop_loss_pct']
+                            st.success(f"✅ Melhores parâmetros aplicados! Período={melhores_p['periodo_mm']} barras, Desvio={melhores_p['desvios_entrada']}, TP={melhores_p['take_profit_pct']*100:.0f}%, SL={melhores_p['stop_loss_pct']*100:.0f}%")
                             st.rerun()
-                            
+
                     df_bt, stats = executar_backtest(df, b_mm, b_dev, b_tp, b_sl)
                     
                     st.markdown("---")
