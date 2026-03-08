@@ -224,13 +224,20 @@ if st.session_state.get('analisar_clicado', False):
         if df.empty:
             st.error("❌ Não foi possível carregar os dados. Verifique o ticker.")
         else:
-            # Otimização Automática Inicial (se habilitada)
+            # 1. Placeholder de aviso flutuante para a Otimização
+            opt_aviso = st.empty()
+            
+            # 2. Instancia as abas ANTES da lógica condicional de verificação!
+            # Isso "cimenta" permanentemente o ID do componente de abas na Renderização do Streamlit,
+            # impossibilitando o bug de "Pular de Aba" (Reset) quando o rerun pula a barra de progresso.
+            tab1, tab2, tab3 = st.tabs(["📊 Dashboard e Gráficos", "📋 Dados Detalhados", "🔁 Otimização de Retorno à Média"])
+            
+            # 3. Otimização Automática Inicial (se habilitada)
             passo_atual = st.session_state.get('passo_opt', 2)
             hash_analise = f"{ticker}_{periodo}_{intervalo}_{passo_atual}"
             
             if st.session_state.get('auto_otimizar', True) and st.session_state.get('last_optimized_ticker') != hash_analise:
-                pre_opt_placeholder = st.empty()
-                with pre_opt_placeholder.container():
+                with opt_aviso.container():
                     with st.spinner(f"✨ Primeira análise: Buscando os melhores parâmetros para {ticker}..."):
                         barra_opt = st.progress(0, text="🔍 Iniciando otimização completa de indicadores...")
                         def _atualiza(pct, msg):
@@ -247,15 +254,9 @@ if st.session_state.get('analisar_clicado', False):
                         barra_opt.empty()
                         
                 st.toast(f"Indicadores otimizados automaticamente para {ticker}!", icon="🎯")
-                pre_opt_placeholder.empty()
-            else:
-                # Mesmo se pular a otimização, declaramos um empty "fantasma"
-                # Isso fixa o índice na árvore de componentes do Streamlit
-                # e previne que st.tabs perca state (pule para a aba 1) nos reruns
-                _ = st.empty()
-                _ = st.empty()  # Equilibrando as instâncias para garantir paridade de DOM ID
+                opt_aviso.empty()
 
-            # Calcular indicadores (usando períodos otimizados se disponíveis)
+            # 4. Calcular indicadores (usando períodos otimizados se disponíveis)
             df = calcular_indicadores(df,
                 sma_curta    = st.session_state.get('sma_curta', 20),
                 sma_longa    = st.session_state.get('sma_longa', 50),
@@ -266,9 +267,6 @@ if st.session_state.get('analisar_clicado', False):
                 stoch_window = st.session_state.get('stoch_window', 14),
                 lr_window    = st.session_state.get('lr_window', 20),
             )
-            
-            # Instanciar as abas
-            tab1, tab2, tab3 = st.tabs(["📊 Dashboard e Gráficos", "📋 Dados Detalhados", "🔁 Otimização de Retorno à Média"])
             
             with tab1:
                 # Informações básicas
