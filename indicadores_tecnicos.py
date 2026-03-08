@@ -581,14 +581,14 @@ def simular_retorno_media(df, periodo_mm=20, desvios_entrada=2.0, take_profit_pc
     return df_bt, estatisticas
 
 
-def otimizar_retorno_media(df, max_trials=1000):
+def otimizar_retorno_media(df, max_trials=1000, passo=2):
     """
     Testa combinações de parâmetros fazendo um Grid Search (Brute Force controlada).
     """
-    periodos_mm = [10, 20, 30, 40, 50, 60, 90]
-    desvios = [1.5, 2.0, 2.5, 3.0]
-    take_profits = [0.03, 0.05, 0.08, 0.10, 0.15]
-    stop_losses = [0.02, 0.03, 0.05, 0.08]
+    periodos_mm = list(range(10, 101, max(passo * 5, 5)))         # 10, 20, 30... ou 10, 15, 20...
+    desvios = [x/10.0 for x in range(10, 41, max(passo, 2))]      # 1.0, 1.2, 1.4... ou 1.0, 1.5...
+    take_profits = [x/100.0 for x in range(3, 22, max(passo, 1))] # 3%, 5%, 7%...
+    stop_losses = [x/100.0 for x in range(2, 16, max(passo, 1))]  # 2%, 4%, 6%...
     
     todas_combinacoes = list(product(periodos_mm, desvios, take_profits, stop_losses))
     
