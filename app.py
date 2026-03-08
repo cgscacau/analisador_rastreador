@@ -387,21 +387,27 @@ if st.session_state.get('analisar_clicado', False):
                     if 'p_dev' not in st.session_state: st.session_state.p_dev = 2.0
                     if 'p_tp' not in st.session_state: st.session_state.p_tp = 0.05
                     if 'p_sl' not in st.session_state: st.session_state.p_sl = 0.03
+                    if 'passo_lr' not in st.session_state: st.session_state.passo_lr = 2
                     if 'otimizando' not in st.session_state: st.session_state.otimizando = False
                     
-                    col_p1, col_p2 = st.columns(2)
+                    st.markdown("##### Configuração Manual")
+                    col_p1, col_p2, col_p3 = st.columns(3)
                     with col_p1:
                         b_mm = st.number_input("Período da Regressão (Canal)", min_value=10, max_value=100, value=int(st.session_state.p_mm), step=5)
-                        b_dev = st.number_input("Desvios para Entrada (Linhas LR)", min_value=1.0, max_value=4.0, value=float(st.session_state.p_dev), step=0.5)
+                        b_dev = st.number_input("Desvios para Entrada", min_value=1.0, max_value=4.0, value=float(st.session_state.p_dev), step=0.5)
                     with col_p2:
                         b_tp = st.number_input("Take Profit %", min_value=0.01, max_value=0.20, value=float(st.session_state.p_tp), step=0.01)
                         b_sl = st.number_input("Stop Loss %", min_value=0.01, max_value=0.20, value=float(st.session_state.p_sl), step=0.01)
+                    with col_p3:
+                        passo_lr_input = st.number_input("Passo do Otimizador (1-10)", min_value=1, max_value=10, value=int(st.session_state.passo_lr), step=1, help="Define o tamanho do salto testado para encontrar o Pote de Ouro.")
+                    
+                    st.session_state.passo_lr = passo_lr_input
                     
                     if st.button("✨ Otimizar Melhores Parâmetros", type="primary"):
                         barra = st.progress(0, text="🔍 Iniciando varredura de parâmetros...")
                         
                         from itertools import product as _product
-                        passo = int(st.session_state.get('passo_opt', 2))
+                        passo = int(st.session_state.get('passo_lr', 2))
                         
                         periodos_mm = list(range(10, 101, max(passo * 5, 5)))         # 10, 20, 30... ou 10, 15, 20...
                         desvios = [x/10.0 for x in range(10, 41, max(passo, 2))]      # 1.0, 1.2, 1.4... ou 1.0, 1.5...
