@@ -507,8 +507,8 @@ if st.session_state.get('analisar_clicado', False):
                 
                 st.plotly_chart(criar_grafico_operacao_atual(df_bt, ticker, period_bars=int(b_mm)+40, window_lr=int(b_mm), desvios_lr=float(b_dev)), use_container_width=True)
             
-except Exception as e:
-    st.error(f"❌ Erro ao processar: {str(e)}")
-    st.info("💡 Dica: Verifique se o ticker está correto e tente novamente.")
+    except Exception as e:
+        st.error(f"❌ Erro ao processar: {str(e)}")
+        st.info("💡 Dica: Verifique se o ticker está correto e tente novamente.")
 else:
-st.info("👈 Configure os parâmetros na barra lateral e clique em 'Analisar'")
+    st.info("👈 Configure os parâmetros na barra lateral e clique em 'Analisar'")
