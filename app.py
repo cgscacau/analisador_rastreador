@@ -12,7 +12,9 @@ from indicadores_tecnicos import (
     simular_retorno_media,
     otimizar_sma,
     otimizar_todos_indicadores,
-    otimizar_retorno_media
+    otimizar_retorno_media,
+    calcular_total_combos_indicadores,
+    calcular_total_combos_lr
 )
 from visualizacao import criar_grafico_unificado, criar_grafico_backtest, criar_grafico_operacao_atual
 
@@ -178,6 +180,12 @@ with st.sidebar:
             step=1,
             help="Menor passo = testes mais precisos (demora mais). Maior passo = mais rápido."
         )
+        
+        # Feedback visual da quantidade de passos
+        total_combos = calcular_total_combos_indicadores(passo_input)
+        tempo_estimado_seg = total_combos * 0.003  # aprox 3ms por check simples
+        tempo_str = f"~{int(tempo_estimado_seg)} seg" if tempo_estimado_seg < 60 else f"~{int(tempo_estimado_seg // 60)} min"
+        st.caption(f"🧪 Testará **{total_combos:,}** combinações ({tempo_str})".replace(',', '.'))
         
         analisar = st.form_submit_button("🔍 Analisar", type="primary", use_container_width=True)
 
@@ -402,6 +410,11 @@ if st.session_state.get('analisar_clicado', False):
                         passo_lr_input = st.number_input("Passo do Otimizador (1-10)", min_value=1, max_value=10, value=int(st.session_state.passo_lr), step=1, help="Define o tamanho do salto testado para encontrar o Pote de Ouro.")
                     
                     st.session_state.passo_lr = passo_lr_input
+                    
+                    total_combos_lr = calcular_total_combos_lr(passo_lr_input)
+                    tempo_lr_seg = total_combos_lr * 0.001 # Aprox 1ms por simulação simples
+                    tempo_lr_str = f"~{int(tempo_lr_seg)} seg" if tempo_lr_seg < 60 else f"~{int(tempo_lr_seg // 60)} min"
+                    st.caption(f"🧪 O otimizador varrerá **{total_combos_lr:,}** combinações (Tempo estimado: {tempo_lr_str})".replace(',', '.'))
                     
                     if st.button("✨ Otimizar Melhores Parâmetros", type="primary"):
                         barra = st.progress(0, text="🔍 Iniciando varredura de parâmetros...")

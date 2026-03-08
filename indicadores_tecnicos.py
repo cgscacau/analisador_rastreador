@@ -71,6 +71,31 @@ def otimizar_sma(df, callback_progresso=None):
     }
 
 
+def calcular_total_combos_indicadores(passo=2):
+    rsi_p = list(range(10, 22, passo))
+    rsi_b = list(range(26, 36, passo))
+    sma_c = list(range(6, 22, passo))
+    sma_l = list(range(40, 121, max(passo * 5, 10))) 
+    macd_f = list(range(8, 16, passo))
+    macd_s = list(range(20, 30, passo))
+    stoch = list(range(10, 18, passo))
+    lr_w = list(range(16, 32, passo))
+    
+    # Mesma lógica do `if sc < sl and mf < ms` do otimizador:
+    valid_sma_macd = sum(1 for sc, sl, mf, ms in product(sma_c, sma_l, macd_f, macd_s) if sc < sl and mf < ms)
+    restante = len(rsi_p) * len(rsi_b) * len(stoch) * len(lr_w)
+    return valid_sma_macd * restante
+
+
+def calcular_total_combos_lr(passo=2):
+    p_mm = list(range(10, 101, max(passo * 5, 5)))
+    dev = [x/10.0 for x in range(10, 41, max(passo, 2))]
+    tp = [x/100.0 for x in range(3, 22, max(passo, 1))]
+    sl = [x/100.0 for x in range(2, 16, max(passo, 1))]
+    valid_tp_sl = sum(1 for t, s in product(tp, sl) if s < t)
+    return len(p_mm) * len(dev) * valid_tp_sl
+
+
 def otimizar_todos_indicadores(df, callback_progresso=None, passo=2):
     """
     Otimização conjunta de todos os períodos dos indicadores técnicos.
