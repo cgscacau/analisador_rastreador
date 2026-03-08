@@ -406,24 +406,7 @@ if st.session_state.get('analisar_clicado', False):
                 if 'passo_lr' not in st.session_state: st.session_state.passo_lr = 2
                 if 'otimizando' not in st.session_state: st.session_state.otimizando = False
                 
-                st.markdown("##### Configuração Manual")
-                col_p1, col_p2, col_p3 = st.columns(3)
-                with col_p1:
-                    b_mm = st.number_input("Período da Regressão (Canal)", min_value=10, max_value=100, value=int(st.session_state.p_mm), step=5)
-                    b_dev = st.number_input("Desvios para Entrada", min_value=1.0, max_value=4.0, value=float(st.session_state.p_dev), step=0.5)
-                with col_p2:
-                    b_tp = st.number_input("Take Profit %", min_value=0.01, max_value=0.20, value=float(st.session_state.p_tp), step=0.01)
-                    b_sl = st.number_input("Stop Loss %", min_value=0.01, max_value=0.20, value=float(st.session_state.p_sl), step=0.01)
-                with col_p3:
-                    passo_lr_input = st.number_input("Passo do Otimizador (1-10)", min_value=1, max_value=10, value=int(st.session_state.passo_lr), step=1, help="Define o tamanho do salto testado para encontrar o Pote de Ouro.")
-                
-                st.session_state.passo_lr = passo_lr_input
-                
-                total_combos_lr = calcular_total_combos_lr(passo_lr_input)
-                tempo_lr_seg = total_combos_lr * 0.001 # Aprox 1ms por simulação simples
-                tempo_lr_str = f"~{int(tempo_lr_seg)} seg" if tempo_lr_seg < 60 else f"~{int(tempo_lr_seg // 60)} min"
-                st.caption(f"🧪 O otimizador varrerá **{total_combos_lr:,}** combinações (Tempo estimado: {tempo_lr_str})".replace(',', '.'))
-                
+                # --- BOTÃO E LÓGICA DE OTIMIZAÇÃO OCORREM PRIMEIRO ---
                 if st.button("✨ Otimizar Melhores Parâmetros", type="primary"):
                     barra = st.progress(0, text="🔍 Iniciando varredura de parâmetros...")
                     
@@ -453,12 +436,31 @@ if st.session_state.get('analisar_clicado', False):
                     barra.progress(100, text="✅ Otimização concluída!")
                     
                     if melhores_p:
+                        # Atualiza o state ANTES dos inputs serem renderizados
                         st.session_state.p_mm = melhores_p['periodo_mm']
                         st.session_state.p_dev = melhores_p['desvios_entrada']
                         st.session_state.p_tp = melhores_p['take_profit_pct']
                         st.session_state.p_sl = melhores_p['stop_loss_pct']
                         st.success(f"✅ Melhores parâmetros aplicados! Período={melhores_p['periodo_mm']} barras, Desvio={melhores_p['desvios_entrada']}, TP={melhores_p['take_profit_pct']*100:.0f}%, SL={melhores_p['stop_loss_pct']*100:.0f}%")
-                        st.rerun()
+                
+                # --- INPUTS RENDERIZADOS AGORA (Lêem o estado recém alterado, se houver) ---
+                st.markdown("##### Configuração Manual")
+                col_p1, col_p2, col_p3 = st.columns(3)
+                with col_p1:
+                    b_mm = st.number_input("Período da Regressão (Canal)", min_value=10, max_value=100, value=int(st.session_state.p_mm), step=5)
+                    b_dev = st.number_input("Desvios para Entrada", min_value=1.0, max_value=4.0, value=float(st.session_state.p_dev), step=0.5)
+                with col_p2:
+                    b_tp = st.number_input("Take Profit %", min_value=0.01, max_value=0.20, value=float(st.session_state.p_tp), step=0.01)
+                    b_sl = st.number_input("Stop Loss %", min_value=0.01, max_value=0.20, value=float(st.session_state.p_sl), step=0.01)
+                with col_p3:
+                    passo_lr_input = st.number_input("Passo do Otimizador (1-10)", min_value=1, max_value=10, value=int(st.session_state.passo_lr), step=1, help="Define o tamanho do salto testado para encontrar o Pote de Ouro.")
+                
+                st.session_state.passo_lr = passo_lr_input
+                
+                total_combos_lr = calcular_total_combos_lr(passo_lr_input)
+                tempo_lr_seg = total_combos_lr * 0.001 # Aprox 1ms por simulação simples
+                tempo_lr_str = f"~{int(tempo_lr_seg)} seg" if tempo_lr_seg < 60 else f"~{int(tempo_lr_seg // 60)} min"
+                st.caption(f"🧪 O otimizador varrerá **{total_combos_lr:,}** combinações (Tempo estimado: {tempo_lr_str})".replace(',', '.'))
 
                 df_bt, stats = executar_backtest(df, b_mm, b_dev, b_tp, b_sl)
                 
