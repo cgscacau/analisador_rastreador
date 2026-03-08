@@ -171,6 +171,14 @@ with st.sidebar:
             index=_intervalo_idx
         )
         
+        passo_input = st.number_input(
+            "Passo Otimização (1 a 10)", 
+            min_value=1, max_value=10, 
+            value=st.session_state.get('passo_opt', 2), 
+            step=1,
+            help="Menor passo = testes mais precisos (demora mais). Maior passo = mais rápido."
+        )
+        
         analisar = st.form_submit_button("🔍 Analisar", type="primary", use_container_width=True)
 
 if analisar:
@@ -183,6 +191,7 @@ if analisar:
     st.session_state.ticker = _t
     st.session_state.periodo = periodo_input
     st.session_state.intervalo = intervalo_input
+    st.session_state.passo_opt = passo_input
 
 ticker = st.session_state.get('ticker', 'PETR4.SA')
 periodo = st.session_state.get('periodo', '6mo')
@@ -200,14 +209,16 @@ if st.session_state.get('analisar_clicado', False):
                 st.error("❌ Não foi possível carregar os dados. Verifique o ticker.")
             else:
                 # Otimização Automática Inicial
-                hash_analise = f"{ticker}_{periodo}_{intervalo}"
+                passo_atual = st.session_state.get('passo_opt', 2)
+                hash_analise = f"{ticker}_{periodo}_{intervalo}_{passo_atual}"
+                
                 if st.session_state.get('last_optimized_ticker') != hash_analise:
                     with st.spinner(f"✨ Primeira análise: Buscando os melhores parâmetros para {ticker}..."):
                         barra_opt = st.progress(0, text="🔍 Iniciando otimização completa de indicadores...")
                         def _atualiza(pct, msg):
                             barra_opt.progress(pct, text=msg)
                         
-                        res = otimizar_todos_indicadores(df, callback_progresso=_atualiza)
+                        res = otimizar_todos_indicadores(df, callback_progresso=_atualiza, passo=passo_atual)
                         
                         # Salva todos os períodos otimizados no estado
                         for k in ('rsi_period', 'sma_curta', 'sma_longa', 'macd_fast', 'macd_slow', 'macd_signal', 'stoch_window', 'lr_window', 'rsi_buy_thresh'):
@@ -340,7 +351,10 @@ if st.session_state.get('analisar_clicado', False):
                         barra_opt = st.progress(0, text="🔍 Iniciando otimização completa de indicadores...")
                         def _atualiza(pct, msg):
                             barra_opt.progress(pct, text=msg)
-                        res = otimizar_todos_indicadores(df, callback_progresso=_atualiza)
+                            
+                        passo_atual = st.session_state.get('passo_opt', 2)
+                        res = otimizar_todos_indicadores(df, callback_progresso=_atualiza, passo=passo_atual)
+                        
                         # Salva todos os períodos otimizados no estado
                         for k in ('rsi_period', 'sma_curta', 'sma_longa', 'macd_fast', 'macd_slow', 'macd_signal', 'stoch_window', 'lr_window'):
                             if k in res:

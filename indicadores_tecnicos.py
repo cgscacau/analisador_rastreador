@@ -71,22 +71,23 @@ def otimizar_sma(df, callback_progresso=None):
     }
 
 
-def otimizar_todos_indicadores(df, callback_progresso=None):
+def otimizar_todos_indicadores(df, callback_progresso=None, passo=2):
     """
     Otimização conjunta de todos os períodos dos indicadores técnicos.
     Testa combinações de RSI, SMA, MACD e Estocástico usando uma estratégia
     de entrada/saída baseada em score composto calculado inline.
     Retorna o conjunto de parâmetros com maior retorno histórico.
     """
-    # Espaços de busca de cada indicador com passo (step) ajustado
-    rsi_periods       = list(range(10, 22, 2))         # 10, 12, 14, 16, 18, 20
-    rsi_buy_thresh    = list(range(26, 36, 2))         # 26, 28, 30, 32, 34
-    sma_curtos        = list(range(6, 22, 2))          # 6, 8, 10, ... 20
-    sma_longos        = [40, 50, 60, 80, 100, 120]     # Usando passos maiores p/ SMAs longas p/ não explodir combinações
-    macd_fasts        = list(range(8, 16, 2))          # 8, 10, 12, 14
-    macd_slows        = list(range(20, 30, 2))         # 20, 22, 24, 26, 28
-    stoch_windows     = list(range(10, 18, 2))         # 10, 12, 14, 16
-    lr_windows        = list(range(16, 32, 2))         # 16, 18, 20, ..., 30
+    # Espaços de busca de cada indicador com passo (step) dinâmico
+    rsi_periods       = list(range(10, 22, passo))
+    rsi_buy_thresh    = list(range(26, 36, passo))
+    sma_curtos        = list(range(6, 22, passo))
+    # Para SMA longa, multiplicamos o passo para varrer um espectro maior sem explodir permutações
+    sma_longos        = list(range(40, 121, max(passo * 5, 10))) 
+    macd_fasts        = list(range(8, 16, passo))
+    macd_slows        = list(range(20, 30, passo))
+    stoch_windows     = list(range(10, 18, passo))
+    lr_windows        = list(range(16, 32, passo))
 
     combos = []
     for rp, rb, sc, sl, mf, ms, sw, lw in product(
