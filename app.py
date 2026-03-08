@@ -151,7 +151,7 @@ with st.sidebar:
     st.header("⚙️ Configurações")
     
     with st.form(key="config_form"):
-        ticker_input = st.text_input("Ticker da Ação", value=st.session_state.get('ticker', 'PETR4.SA'), help="Ex: PETR4.SA, VALE3.SA, ITUB4.SA")
+        ticker_input = st.text_input("Ticker da Ação", value=st.session_state.get('ticker_raw', 'PETR4'), help="Ex: PETR4, VALE3, ITUB4 (sem precisar do .SA)")
         
         _periodo_opts = ["1mo", "3mo", "6mo", "1y", "2y", "5y"]
         _periodo_idx = _periodo_opts.index(st.session_state.get('periodo', '6mo')) if st.session_state.get('periodo', '6mo') in _periodo_opts else 2
@@ -173,7 +173,12 @@ with st.sidebar:
 
 if analisar:
     st.session_state.analisar_clicado = True
-    st.session_state.ticker = ticker_input
+    # Normaliza o ticker: adiciona '.SA' automaticamente se for B3
+    _t = ticker_input.strip().upper()
+    if '.' not in _t:
+        _t = _t + '.SA'
+    st.session_state.ticker_raw = ticker_input.strip().upper()  # guarda o valor sem sufixo para o input
+    st.session_state.ticker = _t
     st.session_state.periodo = periodo_input
     st.session_state.intervalo = intervalo_input
 
