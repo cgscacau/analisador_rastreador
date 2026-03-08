@@ -457,17 +457,15 @@ if st.session_state.get('analisar_clicado', False):
                 st.markdown("##### Configuração Manual")
                 col_p1, col_p2, col_p3 = st.columns(3)
                 with col_p1:
-                    b_mm = st.number_input("Período da Regressão (Canal)", min_value=10, max_value=100, value=int(st.session_state.p_mm), step=5)
-                    b_dev = st.number_input("Desvios para Entrada", min_value=1.0, max_value=4.0, value=float(st.session_state.p_dev), step=0.5)
+                    b_mm = st.number_input("Período da Regressão (Canal)", min_value=10, max_value=100, step=5, key="p_mm")
+                    b_dev = st.number_input("Desvios para Entrada", min_value=1.0, max_value=4.0, step=0.5, key="p_dev")
                 with col_p2:
-                    b_tp = st.number_input("Take Profit %", min_value=0.01, max_value=0.20, value=float(st.session_state.p_tp), step=0.01)
-                    b_sl = st.number_input("Stop Loss %", min_value=0.01, max_value=0.20, value=float(st.session_state.p_sl), step=0.01)
+                    b_tp = st.number_input("Take Profit %", min_value=0.01, max_value=0.20, step=0.01, key="p_tp")
+                    b_sl = st.number_input("Stop Loss %", min_value=0.01, max_value=0.20, step=0.01, key="p_sl")
                 with col_p3:
-                    passo_lr_input = st.number_input("Passo do Otimizador (1-10)", min_value=1, max_value=10, value=int(st.session_state.passo_lr), step=1, help="Define o tamanho do salto testado para encontrar o Pote de Ouro.")
+                    st.number_input("Passo do Otimizador (1-10)", min_value=1, max_value=10, step=1, key="passo_lr", help="Define o tamanho do salto testado para encontrar o Pote de Ouro.")
                 
-                st.session_state.passo_lr = passo_lr_input
-                
-                total_combos_lr = calcular_total_combos_lr(passo_lr_input)
+                total_combos_lr = calcular_total_combos_lr(st.session_state.passo_lr)
                 tempo_lr_seg = total_combos_lr * 0.001 # Aprox 1ms por simulação simples
                 tempo_lr_str = f"~{int(tempo_lr_seg)} seg" if tempo_lr_seg < 60 else f"~{int(tempo_lr_seg // 60)} min"
                 st.caption(f"🧪 O otimizador varrerá **{total_combos_lr:,}** combinações (Tempo estimado: {tempo_lr_str})".replace(',', '.'))
