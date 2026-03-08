@@ -4,58 +4,55 @@ import ta
 from itertools import product
 
 def calcular_indicadores(df, **kwargs):
-    """Calcula indicadores técnicos usando a biblioteca ta. Aceita sma_curta e sma_longa como kwargs."""
+    """Calcula indicadores técnicos. Todos os períodos são configuravéis via kwargs."""
+    
+    rsi_period   = kwargs.get('rsi_period', 14)
+    macd_fast    = kwargs.get('macd_fast', 12)
+    macd_slow    = kwargs.get('macd_slow', 26)
+    macd_signal  = kwargs.get('macd_signal', 9)
+    stoch_window = kwargs.get('stoch_window', 14)
+    lr_window    = kwargs.get('lr_window', 20)
+    lr_dev       = kwargs.get('lr_dev', 2)
+    sma_curta    = kwargs.get('sma_curta', 20)
+    sma_longa    = kwargs.get('sma_longa', 50)
     
     # RSI
-    df['RSI'] = ta.momentum.RSIIndicator(close=df['Close'], window=14).rsi()
+    df['RSI'] = ta.momentum.RSIIndicator(close=df['Close'], window=rsi_period).rsi()
     
     # MACD
-    macd = ta.trend.MACD(close=df['Close'], window_slow=26, window_fast=12, window_sign=9)
+    macd = ta.trend.MACD(close=df['Close'], window_slow=macd_slow, window_fast=macd_fast, window_sign=macd_signal)
     df['MACD'] = macd.macd()
     df['MACD_signal'] = macd.macd_signal()
     df['MACD_hist'] = macd.macd_diff()
     
-    # Canal de Regressão Linear (Substituindo Bollinger)
     # Canal de Regressão Linear
-    window_lr = 20
-    
-    def calculate_lr(series):
-        if len(series) < window_lr: return np.nan
-        x = np.arange(window_lr)
+    def _calc_lr(series):
+        if len(series) < lr_window: return np.nan
+        x = np.arange(lr_window)
         y = series.values
         slope, intercept = np.polyfit(x, y, 1)
-        # Retorna o ponto projetado no final da janela
-        return intercept + slope * (window_lr - 1)
+        return intercept + slope * (lr_window - 1)
 
-    df['LR_middle'] = df['Close'].rolling(window=window_lr).apply(calculate_lr, raw=False)
-    std_lr = df['Close'].rolling(window=window_lr).std()
+    df['LR_middle'] = df['Close'].rolling(window=lr_window).apply(_calc_lr, raw=False)
+    std_lr = df['Close'].rolling(window=lr_window).std()
+    df['LR_upper'] = df['LR_middle'] + (lr_dev * std_lr)
+    df['LR_lower'] = df['LR_middle'] - (lr_dev * std_lr)
     
-    df['LR_upper'] = df['LR_middle'] + (2 * std_lr)
-    df['LR_lower'] = df['LR_middle'] - (2 * std_lr)
-    
-    # Médias Móveis (usando períodos configuravéis)
-    sma_curta = kwargs.get('sma_curta', 20)
-    sma_longa = kwargs.get('sma_longa', 50)
+    # Médias Móveis
     df['SMA_20'] = ta.trend.SMAIndicator(close=df['Close'], window=sma_curta).sma_indicator()
     df['SMA_50'] = ta.trend.SMAIndicator(close=df['Close'], window=sma_longa).sma_indicator()
-    df['EMA_12'] = ta.trend.EMAIndicator(close=df['Close'], window=12).ema_indicator()
-    df['EMA_26'] = ta.trend.EMAIndicator(close=df['Close'], window=26).ema_indicator()
+    df['EMA_12'] = ta.trend.EMAIndicator(close=df['Close'], window=macd_fast).ema_indicator()
+    df['EMA_26'] = ta.trend.EMAIndicator(close=df['Close'], window=macd_slow).ema_indicator()
     
     # ATR (Average True Range)
     df['ATR'] = ta.volatility.AverageTrueRange(
-        high=df['High'], 
-        low=df['Low'], 
-        close=df['Close'], 
-        window=14
+        high=df['High'], low=df['Low'], close=df['Close'], window=14
     ).average_true_range()
     
     # Estocástico
     stoch = ta.momentum.StochasticOscillator(
-        high=df['High'],
-        low=df['Low'],
-        close=df['Close'],
-        window=14,
-        smooth_window=3
+        high=df['High'], low=df['Low'], close=df['Close'],
+        window=stoch_window, smooth_window=3
     )
     df['STOCH_k'] = stoch.stoch()
     df['STOCH_d'] = stoch.stoch_signal()
@@ -64,62 +61,128 @@ def calcular_indicadores(df, **kwargs):
 
 
 def otimizar_sma(df, callback_progresso=None):
-    """
-    Testa combinações de períodos de SMA curta e longa usando Golden/Death Cross como sinal.
-    Simula entradas no Golden Cross e saídas no Death Cross, calculando o retorno acumulado.
-    Retorna o melhor par de períodos encontrado.
-    """
-    periodos_curtos = [5, 8, 10, 15, 20]
-    periodos_longos = [30, 50, 70, 100, 150, 200]
-    
-    combos_validos = [(c, l) for c, l in product(periodos_curtos, periodos_longos) if c < l]
-    total = len(combos_validos)
-    
-    melhor_retorno = -999
-    melhores_periodos = (20, 50)
-    melhor_n_trades = 0
-    
-    for i, (sma_c, sma_l) in enumerate(combos_validos):
-        if callback_progresso:
-            pct = int((i / total) * 100)
-            callback_progresso(pct, f"🔍 Testando SMA({sma_c}) vs SMA({sma_l})... ({pct}%)")
-        
-        sma_curta = df['Close'].rolling(sma_c).mean()
-        sma_longa = df['Close'].rolling(sma_l).mean()
-        
-        capital = 1000.0
-        posicionado = False
-        preco_entrada = 0.0
-        n_trades = 0
-        
-        for j in range(1, len(df)):
-            golden = sma_curta.iloc[j-1] < sma_longa.iloc[j-1] and sma_curta.iloc[j] > sma_longa.iloc[j]
-            death = sma_curta.iloc[j-1] > sma_longa.iloc[j-1] and sma_curta.iloc[j] < sma_longa.iloc[j]
-            
-            if golden and not posicionado:
-                posicionado = True
-                preco_entrada = df['Close'].iloc[j]
-            elif death and posicionado:
-                retorno = (df['Close'].iloc[j] - preco_entrada) / preco_entrada
-                capital *= (1 + retorno)
-                posicionado = False
-                n_trades += 1
-        
-        retorno_final = ((capital - 1000) / 1000) * 100
-        if retorno_final > melhor_retorno and n_trades >= 2:
-            melhor_retorno = retorno_final
-            melhores_periodos = (sma_c, sma_l)
-            melhor_n_trades = n_trades
-    
-    if callback_progresso:
-        callback_progresso(100, "✅ Otimização de SMAs concluída!")
-    
+    """Versão simplificada legada — chama otimizar_todos_indicadores internamente."""
+    resultado = otimizar_todos_indicadores(df, callback_progresso=callback_progresso)
     return {
-        'sma_curta': melhores_periodos[0],
-        'sma_longa': melhores_periodos[1],
-        'retorno_pct': melhor_retorno,
-        'n_trades': melhor_n_trades
+        'sma_curta': resultado['sma_curta'],
+        'sma_longa': resultado['sma_longa'],
+        'retorno_pct': resultado['retorno_pct'],
+        'n_trades': resultado['n_trades'],
     }
+
+
+def otimizar_todos_indicadores(df, callback_progresso=None):
+    """
+    Otimização conjunta de todos os períodos dos indicadores técnicos.
+    Testa combinações de RSI, SMA, MACD e Estocástico usando uma estratégia
+    de entrada/saída baseada em score composto calculado inline.
+    Retorna o conjunto de parâmetros com maior retorno histórico.
+    """
+    # Espaços de busca de cada indicador com passo (step) ajustado
+    rsi_periods       = list(range(10, 22, 2))         # 10, 12, 14, 16, 18, 20
+    rsi_buy_thresh    = list(range(26, 36, 2))         # 26, 28, 30, 32, 34
+    sma_curtos        = list(range(6, 22, 2))          # 6, 8, 10, ... 20
+    sma_longos        = [40, 50, 60, 80, 100, 120]     # Usando passos maiores p/ SMAs longas p/ não explodir combinações
+    macd_fasts        = list(range(8, 16, 2))          # 8, 10, 12, 14
+    macd_slows        = list(range(20, 30, 2))         # 20, 22, 24, 26, 28
+    stoch_windows     = list(range(10, 18, 2))         # 10, 12, 14, 16
+    lr_windows        = list(range(16, 32, 2))         # 16, 18, 20, ..., 30
+
+    combos = []
+    for rp, rb, sc, sl, mf, ms, sw, lw in product(
+        rsi_periods, rsi_buy_thresh, sma_curtos, sma_longos,
+        macd_fasts, macd_slows, stoch_windows, lr_windows
+    ):
+        if sc < sl and mf < ms:
+            combos.append((rp, rb, sc, sl, mf, ms, sw, lw))
+
+    total = len(combos)
+    melhor_retorno = -999.0
+    melhores_params = None
+    melhor_n_trades = 0
+
+    for i, (rp, rb, sc, sl, mf, ms, sw, lw) in enumerate(combos):
+        if callback_progresso and i % 20 == 0:
+            pct = int((i / total) * 100)
+            callback_progresso(pct, f"🔍 Combo {i}/{total} — RSI({rp}/{rb}) SMA({sc}/{sl}) MACD({mf}/{ms}) Stoch({sw}) LR({lw})")
+
+        try:
+            # Calcula SMAs e RSI inline (mais rápido que calcular_indicadores completo)
+            sma_c = df['Close'].rolling(sc).mean()
+            sma_l = df['Close'].rolling(sl).mean()
+            rsi_s = ta.momentum.RSIIndicator(close=df['Close'], window=rp).rsi()
+            stoch_s = ta.momentum.StochasticOscillator(
+                high=df['High'], low=df['Low'], close=df['Close'],
+                window=sw, smooth_window=3
+            ).stoch()
+            macd_o = ta.trend.MACD(close=df['Close'], window_fast=mf, window_slow=ms, window_sign=9)
+            macd_line = macd_o.macd()
+            macd_sig  = macd_o.macd_signal()
+
+            capital = 1000.0
+            posicionado = False
+            preco_entrada = 0.0
+            n_trades = 0
+            n_wins = 0
+
+            for j in range(ms + 1, len(df)):
+                score = 0
+                # RSI
+                if not pd.isna(rsi_s.iloc[j]):
+                    if rsi_s.iloc[j] < rb:        score += 2
+                    elif rsi_s.iloc[j] > (100 - rb): score -= 2
+                # SMA
+                if not pd.isna(sma_c.iloc[j]) and not pd.isna(sma_l.iloc[j]):
+                    score += 1 if sma_c.iloc[j] > sma_l.iloc[j] else -1
+                    score += 0.5 if df['Close'].iloc[j] > sma_c.iloc[j] else -0.5
+                # MACD
+                if not pd.isna(macd_line.iloc[j]) and not pd.isna(macd_sig.iloc[j]):
+                    score += 1 if macd_line.iloc[j] > macd_sig.iloc[j] else -1
+                # Stoch
+                if not pd.isna(stoch_s.iloc[j]):
+                    if stoch_s.iloc[j] < 20: score += 1.5
+                    elif stoch_s.iloc[j] > 80: score -= 1.5
+
+                if not posicionado and score >= 3:
+                    posicionado = True
+                    preco_entrada = df['Close'].iloc[j]
+                elif posicionado and score <= -2:
+                    ret = (df['Close'].iloc[j] - preco_entrada) / preco_entrada
+                    capital *= (1 + ret)
+                    if ret > 0: n_wins += 1
+                    posicionado = False
+                    n_trades += 1
+
+            retorno_final = ((capital - 1000) / 1000) * 100
+            if retorno_final > melhor_retorno and n_trades >= 2:
+                melhor_retorno = retorno_final
+                melhor_n_trades = n_trades
+                melhores_params = {
+                    'rsi_period': rp, 'rsi_buy_thresh': rb,
+                    'sma_curta': sc, 'sma_longa': sl,
+                    'macd_fast': mf, 'macd_slow': ms,
+                    'stoch_window': sw, 'lr_window': lw,
+                    'retorno_pct': retorno_final,
+                    'n_trades': n_trades,
+                    'win_rate': round(n_wins / n_trades * 100, 1) if n_trades > 0 else 0
+                }
+        except Exception:
+            continue
+
+    if callback_progresso:
+        callback_progresso(100, "✅ Otimização completa de indicadores concluída!")
+
+    if melhores_params is None:
+        melhores_params = {
+            'rsi_period': 14, 'rsi_buy_thresh': 30,
+            'sma_curta': 20, 'sma_longa': 50,
+            'macd_fast': 12, 'macd_slow': 26,
+            'stoch_window': 14, 'lr_window': 20,
+            'retorno_pct': 0.0, 'n_trades': 0, 'win_rate': 0.0
+        }
+
+    return melhores_params
+
 
 # ============================================================================
 # FUNÇÕES DE ANÁLISE E SCORING
