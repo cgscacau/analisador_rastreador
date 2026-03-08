@@ -11,6 +11,7 @@ from indicadores_tecnicos import (
     gerar_sinais,
     simular_retorno_media,
     otimizar_sma,
+    otimizar_todos_indicadores,
     otimizar_retorno_media
 )
 from visualizacao import criar_grafico_unificado, criar_grafico_backtest, criar_grafico_operacao_atual
@@ -198,10 +199,36 @@ if st.session_state.get('analisar_clicado', False):
             if df.empty:
                 st.error("❌ Não foi possível carregar os dados. Verifique o ticker.")
             else:
-                # Calcular indicadores (usando SMAs otimizadas se disponíveis)
-                sma_c = st.session_state.get('sma_curta', 20)
-                sma_l = st.session_state.get('sma_longa', 50)
-                df = calcular_indicadores(df, sma_curta=sma_c, sma_longa=sma_l)
+                # Otimização Automática Inicial
+                hash_analise = f"{ticker}_{periodo}_{intervalo}"
+                if st.session_state.get('last_optimized_ticker') != hash_analise:
+                    with st.spinner(f"✨ Primeira análise: Buscando os melhores parâmetros para {ticker}..."):
+                        barra_opt = st.progress(0, text="🔍 Iniciando otimização completa de indicadores...")
+                        def _atualiza(pct, msg):
+                            barra_opt.progress(pct, text=msg)
+                        
+                        res = otimizar_todos_indicadores(df, callback_progresso=_atualiza)
+                        
+                        # Salva todos os períodos otimizados no estado
+                        for k in ('rsi_period', 'sma_curta', 'sma_longa', 'macd_fast', 'macd_slow', 'macd_signal', 'stoch_window', 'lr_window', 'rsi_buy_thresh'):
+                            if k in res:
+                                st.session_state[k] = res[k]
+                                
+                        st.session_state['last_optimized_ticker'] = hash_analise
+                        barra_opt.empty()
+                        st.toast(f"Indicadores otimizados automaticamente para {ticker}!", icon="🎯")
+
+                # Calcular indicadores (usando períodos otimizados se disponíveis)
+                df = calcular_indicadores(df,
+                    sma_curta    = st.session_state.get('sma_curta', 20),
+                    sma_longa    = st.session_state.get('sma_longa', 50),
+                    rsi_period   = st.session_state.get('rsi_period', 14),
+                    macd_fast    = st.session_state.get('macd_fast', 12),
+                    macd_slow    = st.session_state.get('macd_slow', 26),
+                    macd_signal  = st.session_state.get('macd_signal', 9),
+                    stoch_window = st.session_state.get('stoch_window', 14),
+                    lr_window    = st.session_state.get('lr_window', 20),
+                )
                 
                 # Instanciar as abas
                 tab1, tab2, tab3 = st.tabs(["📊 Dashboard e Gráficos", "📋 Dados Detalhados", "🔁 Otimização de Retorno à Média"])
@@ -299,19 +326,33 @@ if st.session_state.get('analisar_clicado', False):
                     
                     st.markdown("---")
                     
-                    # ========= OTIMIZADOR DE SMAs =========
-                    sma_c = st.session_state.get('sma_curta', 20)
-                    sma_l = st.session_state.get('sma_longa', 50)
-                    st.markdown(f"📐 **Médias Móveis atuais:** SMA Curta = `{sma_c}` | SMA Longa = `{sma_l}`")
+                    # ========= OTIMIZADOR COMPLETO DE INDICADORES =========
+                    _params_labels = {
+                        'RSI': f"RSI({st.session_state.get('rsi_period', 14)})",
+                        'SMA': f"SMA({st.session_state.get('sma_curta', 20)}/{st.session_state.get('sma_longa', 50)})",
+                        'MACD': f"MACD({st.session_state.get('macd_fast', 12)}/{st.session_state.get('macd_slow', 26)})",
+                        'Stoch': f"Stoch({st.session_state.get('stoch_window', 14)})",
+                        'LR': f"LR({st.session_state.get('lr_window', 20)})",
+                    }
+                    st.markdown("📐 **Parâmetros Atuais:** " + " | ".join(f"`{v}`" for v in _params_labels.values()))
                     
-                    if st.button("⚡ Otimizar Períodos das Médias Móveis", type="secondary"):
-                        barra_sma = st.progress(0, text="🔍 Iniciando otimização de SMAs...")
-                        def atualiza_barra(pct, msg):
-                            barra_sma.progress(pct, text=msg)
-                        resultado_sma = otimizar_sma(df, callback_progresso=atualiza_barra)
-                        st.session_state.sma_curta = resultado_sma['sma_curta']
-                        st.session_state.sma_longa = resultado_sma['sma_longa']
-                        st.success(f"✅ Melhor par encontrado: SMA({resultado_sma['sma_curta']}) × SMA({resultado_sma['sma_longa']}) → Retorno histórico de {resultado_sma['retorno_pct']:.1f}% em {resultado_sma['n_trades']} trades")
+                    if st.button("⚡ Otimizar Todos os Indicadores", type="secondary"):
+                        barra_opt = st.progress(0, text="🔍 Iniciando otimização completa de indicadores...")
+                        def _atualiza(pct, msg):
+                            barra_opt.progress(pct, text=msg)
+                        res = otimizar_todos_indicadores(df, callback_progresso=_atualiza)
+                        # Salva todos os períodos otimizados no estado
+                        for k in ('rsi_period', 'sma_curta', 'sma_longa', 'macd_fast', 'macd_slow', 'macd_signal', 'stoch_window', 'lr_window'):
+                            if k in res:
+                                st.session_state[k] = res[k]
+                        st.success(
+                            f"✅ Melhor combinação encontrada! "
+                            f"RSI({res.get('rsi_period',14)}&lt;{res.get('rsi_buy_thresh',30)}) | "
+                            f"SMA({res.get('sma_curta',20)}/{res.get('sma_longa',50)}) | "
+                            f"MACD({res.get('macd_fast',12)}/{res.get('macd_slow',26)}) | "
+                            f"Stoch({res.get('stoch_window',14)}) | LR({res.get('lr_window',20)}) "
+                            f"→ Retorno: {res.get('retorno_pct',0):.1f}% | Win Rate: {res.get('win_rate',0):.0f}% | {res.get('n_trades',0)} trades"
+                        )
                         st.rerun()
                     
                     st.markdown("---")
