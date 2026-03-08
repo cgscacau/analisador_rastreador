@@ -173,21 +173,22 @@ with st.sidebar:
             index=_intervalo_idx
         )
         
-        passo_input = st.number_input(
-            "Passo Otimização (1 a 10)", 
-            min_value=1, max_value=10, 
-            value=st.session_state.get('passo_opt', 2), 
-            step=1,
-            help="Menor passo = testes mais precisos (demora mais). Maior passo = mais rápido."
-        )
-        
-        # Feedback visual da quantidade de passos
-        total_combos = calcular_total_combos_indicadores(passo_input)
-        tempo_estimado_seg = total_combos * 0.003  # aprox 3ms por check simples
-        tempo_str = f"~{int(tempo_estimado_seg)} seg" if tempo_estimado_seg < 60 else f"~{int(tempo_estimado_seg // 60)} min"
-        st.caption(f"🧪 Testará **{total_combos:,}** combinações ({tempo_str})".replace(',', '.'))
-        
         analisar = st.form_submit_button("🔍 Analisar", type="primary", use_container_width=True)
+        
+    st.markdown("---")
+    passo_input = st.number_input(
+        "Passo Otimização (1 a 10)", 
+        min_value=1, max_value=10, 
+        value=st.session_state.get('passo_opt', 2), 
+        step=1,
+        help="Menor passo = testes mais precisos (demora mais). Maior passo = mais rápido."
+    )
+    
+    # Feedback visual da quantidade de passos atualizando em tempo real
+    total_combos = calcular_total_combos_indicadores(passo_input)
+    tempo_estimado_seg = total_combos * 0.003  # aprox 3ms por check simples
+    tempo_str = f"~{int(tempo_estimado_seg)} seg" if tempo_estimado_seg < 60 else f"~{int(tempo_estimado_seg // 60)} min"
+    st.caption(f"🧪 Testará **{total_combos:,}** combinações ({tempo_str})".replace(',', '.'))
 
 if analisar:
     st.session_state.analisar_clicado = True
