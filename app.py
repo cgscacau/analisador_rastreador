@@ -229,21 +229,31 @@ if st.session_state.get('analisar_clicado', False):
             hash_analise = f"{ticker}_{periodo}_{intervalo}_{passo_atual}"
             
             if st.session_state.get('auto_otimizar', True) and st.session_state.get('last_optimized_ticker') != hash_analise:
-                with st.spinner(f"✨ Primeira análise: Buscando os melhores parâmetros para {ticker}..."):
-                    barra_opt = st.progress(0, text="🔍 Iniciando otimização completa de indicadores...")
-                    def _atualiza(pct, msg):
-                        barra_opt.progress(pct, text=msg)
-                    
-                    res = otimizar_todos_indicadores(df, callback_progresso=_atualiza, passo=passo_atual)
-                    
-                    # Salva todos os períodos otimizados no estado
-                    for k in ('rsi_period', 'sma_curta', 'sma_longa', 'macd_fast', 'macd_slow', 'macd_signal', 'stoch_window', 'lr_window', 'rsi_buy_thresh'):
-                        if k in res:
-                            st.session_state[k] = res[k]
-                            
-                    st.session_state['last_optimized_ticker'] = hash_analise
-                    barra_opt.empty()
-                    st.toast(f"Indicadores otimizados automaticamente para {ticker}!", icon="🎯")
+                pre_opt_placeholder = st.empty()
+                with pre_opt_placeholder.container():
+                    with st.spinner(f"✨ Primeira análise: Buscando os melhores parâmetros para {ticker}..."):
+                        barra_opt = st.progress(0, text="🔍 Iniciando otimização completa de indicadores...")
+                        def _atualiza(pct, msg):
+                            barra_opt.progress(pct, text=msg)
+                        
+                        res = otimizar_todos_indicadores(df, callback_progresso=_atualiza, passo=passo_atual)
+                        
+                        # Salva todos os períodos otimizados no estado
+                        for k in ('rsi_period', 'sma_curta', 'sma_longa', 'macd_fast', 'macd_slow', 'macd_signal', 'stoch_window', 'lr_window', 'rsi_buy_thresh'):
+                            if k in res:
+                                st.session_state[k] = res[k]
+                                
+                        st.session_state['last_optimized_ticker'] = hash_analise
+                        barra_opt.empty()
+                        
+                st.toast(f"Indicadores otimizados automaticamente para {ticker}!", icon="🎯")
+                pre_opt_placeholder.empty()
+            else:
+                # Mesmo se pular a otimização, declaramos um empty "fantasma"
+                # Isso fixa o índice na árvore de componentes do Streamlit
+                # e previne que st.tabs perca state (pule para a aba 1) nos reruns
+                _ = st.empty()
+                _ = st.empty()  # Equilibrando as instâncias para garantir paridade de DOM ID
 
             # Calcular indicadores (usando períodos otimizados se disponíveis)
             df = calcular_indicadores(df,
