@@ -176,6 +176,13 @@ with st.sidebar:
         analisar = st.form_submit_button("🔍 Analisar", type="primary", use_container_width=True)
         
     st.markdown("---")
+    
+    auto_otimizar = st.toggle(
+        "Auto-otimizar Indicadores (Demorado)", 
+        value=st.session_state.get('auto_otimizar', True),
+        help="Deixe ativo para buscar os melhores parâmetros de RSI, MACD, etc, ao analisar. Desative para pular essa etapa e acessar as abas imediatamente (útil para usar apenas a aba de Regressão)."
+    )
+    
     passo_input = st.number_input(
         "Passo Otimização (1 a 10)", 
         min_value=1, max_value=10, 
@@ -201,6 +208,7 @@ if analisar:
     st.session_state.periodo = periodo_input
     st.session_state.intervalo = intervalo_input
     st.session_state.passo_opt = passo_input
+    st.session_state.auto_otimizar = auto_otimizar
 
 ticker = st.session_state.get('ticker', 'PETR4.SA')
 periodo = st.session_state.get('periodo', '6mo')
@@ -217,11 +225,11 @@ if st.session_state.get('analisar_clicado', False):
             if df.empty:
                 st.error("❌ Não foi possível carregar os dados. Verifique o ticker.")
             else:
-                # Otimização Automática Inicial
+                # Otimização Automática Inicial (se habilitada)
                 passo_atual = st.session_state.get('passo_opt', 2)
                 hash_analise = f"{ticker}_{periodo}_{intervalo}_{passo_atual}"
                 
-                if st.session_state.get('last_optimized_ticker') != hash_analise:
+                if st.session_state.get('auto_otimizar', True) and st.session_state.get('last_optimized_ticker') != hash_analise:
                     with st.spinner(f"✨ Primeira análise: Buscando os melhores parâmetros para {ticker}..."):
                         barra_opt = st.progress(0, text="🔍 Iniciando otimização completa de indicadores...")
                         def _atualiza(pct, msg):
