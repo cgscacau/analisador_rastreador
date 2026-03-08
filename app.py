@@ -223,6 +223,59 @@ if st.session_state.get('analisar_clicado', False):
                     
                     st.markdown("---")
                     
+                    # ========= SCORE DE CONFIANÇA VISUAL =========
+                    score, detalhes_score = calcular_score_compra_venda(df)
+                    max_score = 10.5  # soma máxima possível dos pesos
+                    score_pct = max(0, min(100, int(((score + max_score) / (2 * max_score)) * 100)))
+                    
+                    bullish_items = [(n, v) for n, v, d in detalhes_score if d == 'Bullish']
+                    bearish_items = [(n, v) for n, v, d in detalhes_score if d == 'Bearish']
+                    
+                    if score >= 3:
+                        score_label = "🟢 COMPRA / BULLISH"
+                        score_color = "#00c853"
+                        score_emoji = "🟢"
+                    elif score <= -3:
+                        score_label = "🔴 VENDA / BEARISH"
+                        score_color = "#f44336"
+                        score_emoji = "🔴"
+                    else:
+                        score_label = "🟡 NEUTRO / AGUARDAR"
+                        score_color = "#ff9800"
+                        score_emoji = "🟡"
+
+                    st.markdown(f"""
+                    <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); 
+                                border-radius: 12px; padding: 20px; margin-bottom: 16px;
+                                border-left: 5px solid {score_color};">
+                        <div style="display: flex; align-items: center; gap: 20px;">
+                            <div style="font-size: 48px;">{score_emoji}</div>
+                            <div>
+                                <div style="color: {score_color}; font-size: 22px; font-weight: bold;">{score_label}</div>
+                                <div style="color: #aaa; font-size: 14px;">Score Composto: {score:.1f} pontos &nbsp;|&nbsp; Confiança: {score_pct}%</div>
+                            </div>
+                            <div style="margin-left: auto; text-align: right;">
+                                <div style="color: #4caf50; font-size: 13px;">Fatores Bullish: {len(bullish_items)}</div>
+                                <div style="color: #f44336; font-size: 13px;">Fatores Bearish: {len(bearish_items)}</div>
+                            </div>
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    sc1, sc2 = st.columns(2)
+                    with sc1:
+                        if bullish_items:
+                            st.markdown("**✅ Fatores Positivos:**")
+                            for nome, valor in bullish_items:
+                                st.markdown(f"&nbsp;&nbsp;`+{valor}` {nome}")
+                    with sc2:
+                        if bearish_items:
+                            st.markdown("**❌ Fatores Negativos:**")
+                            for nome, valor in bearish_items:
+                                st.markdown(f"&nbsp;&nbsp;`{valor}` {nome}")
+                    
+                    st.markdown("---")
+                    
                     # RESUMO ANALÍTICO
                     exibir_resumo_analitico(df)
                     
